@@ -17,16 +17,10 @@ def main():
     })
 
     with Tello(print_commands=False, print_responses=False, print_state_messages=False) as drone:
-        fx, fy, cx, cy = drone.get_intrinsics()
-        camera_matrix: np.ndarray = np.array([
-            [fx, 0, cx],
-            [0, fy, cy],
-            [0, 0, 1]
-        ])
-
         while True:
-            img: np.ndarray = drone.get_image()
-            print(relocaliser.relocalise(img, camera_matrix, draw_detections=True, print_correspondences=False))
+            print(relocaliser.estimate_pose(
+                drone.get_image(), drone.get_intrinsics(), draw_detections=True, print_correspondences=False)
+            )
 
 
 if __name__ == "__main__":

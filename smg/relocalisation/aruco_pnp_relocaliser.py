@@ -1,5 +1,7 @@
 import numpy as np
 
+from typing import Dict
+
 from smg.relocalisation.backends.sparse_pnp_backend import SparsePnPBackend
 from smg.relocalisation.frontends.aruco_correspondence_generator import ArUcoCorrespondenceGenerator
 
@@ -9,13 +11,13 @@ class ArUcoPnPRelocaliser:
 
     # CONSTRUCTORS
 
-    def __init__(self, fiducials_filename: str):
+    def __init__(self, fiducials: Dict[str, np.ndarray]):
         """
         Construct an ArUco-PnP relocaliser.
 
-        :param fiducials_filename:  The name of the file containing the fiducials.
+        :param fiducials:   The fiducials.
         """
-        self.__correspondence_generator = ArUcoCorrespondenceGenerator(fiducials_filename)
+        self.__correspondence_generator: ArUcoCorrespondenceGenerator = ArUcoCorrespondenceGenerator(fiducials)
 
     # PUBLIC METHODS
 

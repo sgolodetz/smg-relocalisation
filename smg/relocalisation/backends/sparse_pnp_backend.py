@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from typing import Optional
+from typing import List, Optional
 
 
 class SparsePnPBackend:
@@ -10,7 +10,7 @@ class SparsePnPBackend:
     # PUBLIC STATIC METHODS
 
     @staticmethod
-    def estimate_pose(correspondences: [np.ndarray], camera_matrix: np.ndarray) -> Optional[np.ndarray]:
+    def estimate_pose(correspondences: List[np.ndarray], camera_matrix: np.ndarray) -> Optional[np.ndarray]:
         """
         Try to estimate the camera-to-world transform from a set of >= 4 2D-to-3D point correspondences.
 

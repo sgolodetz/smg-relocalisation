@@ -1,0 +1,1 @@
+from .aruco_correspondence_generator import ArUcoCorrespondenceGenerator

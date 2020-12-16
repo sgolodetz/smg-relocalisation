@@ -3,25 +3,27 @@ import numpy as np
 from typing import Optional
 
 
-class MonocularPoseCorrector:
-    """Can be used to correct the scale of a monocular reconstruction."""
+class MonocularPoseGlobaliser:
+    """Used to correct the scale of monocular poses and transform them into a global coordinate system."""
 
     # CONSTRUCTOR
 
     def __init__(self, *, debug: bool = True):
         """
-        Construct a monocular pose corrector.
+        Construct a monocular pose globaliser.
 
         :param debug:   Whether or not to output debug messages.
         """
         self.__debug: bool = debug
-        # A metric transformation from reference camera space to world space, as estimated by the relocaliser.
-        self.__relocaliser_w_t_r: Optional[np.ndarray] = None
-        # A non-metric transformation from reference camera space to initial camera space, as estimated by the tracker.
-        self.__tracker_i_t_r: Optional[np.ndarray] = None
         self.__scale: float = 1.0
         self.__scale_count: int = 0
         self.__scale_sum: float = 0.0
+
+        # A metric transformation from reference space to world space, as estimated by the relocaliser.
+        self.__relocaliser_w_t_r: Optional[np.ndarray] = None
+
+        # A non-metric transformation from reference space to initial camera space, as estimated by the tracker.
+        self.__tracker_i_t_r: Optional[np.ndarray] = None
 
     # PUBLIC METHODS
 
@@ -35,13 +37,14 @@ class MonocularPoseCorrector:
         .. note::
             The transformations output by the relocaliser are assumed to be metric.
         .. note::
-            The transformations output by the tracker are assumed to be non-metric, and their scale may drift over time.
+            The transformations output by the monocular tracker are assumed to be non-metric, and their scale
+            may drift over time.
 
         :param tracker_i_t_c:   A non-metric transformation from current camera space to initial camera space,
                                 as estimated by the tracker.
         :return:                A metric transformation from current camera space to world space.
         """
-        # Make a metric transformation from reference camera space to initial camera space.
+        # Make a metric transformation from reference space to initial camera space.
         scaled_tracker_i_t_r: np.ndarray = self.__tracker_i_t_r.copy()
         scaled_tracker_i_t_r[0:3, 3] *= self.__scale
 
@@ -55,9 +58,9 @@ class MonocularPoseCorrector:
 
     def has_reference(self) -> bool:
         """
-        Get whether or not the pose corrector currently has a reference camera space.
+        Get whether or not the globaliser currently has a reference space.
 
-        :return:    True, if the pose corrector currently has a reference camera space, or False otherwise.
+        :return:    True, if the globaliser currently has a reference space, or False otherwise.
         """
         return self.__relocaliser_w_t_r is not None
 
@@ -70,9 +73,9 @@ class MonocularPoseCorrector:
 
     def reset(self) -> None:
         """
-        Reset the pose corrector.
+        Reset the globaliser.
         """
-        # Clear the reference camera space.
+        # Clear the reference space.
         self.__relocaliser_w_t_r = None
         self.__tracker_i_t_r = None
 
@@ -81,16 +84,16 @@ class MonocularPoseCorrector:
         self.__scale_count = 0
         self.__scale_sum = 0.0
 
-    def set_reference(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray) -> None:
+    def set_reference_space(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray) -> None:
         """
-        Set the reference camera space to the current camera space.
+        Set the reference space to the current camera space.
 
         :param tracker_i_t_c:       A non-metric transformation from current camera space to initial camera space,
                                     as estimated by the tracker.
         :param relocaliser_w_t_c:   A metric transformation from current camera space to world space, as estimated
                                     by the relocaliser.
         """
-        # Set the reference camera space to the current camera space.
+        # Set the reference space to the current camera space.
         self.__relocaliser_w_t_r = relocaliser_w_t_c
         self.__tracker_i_t_r = tracker_i_t_c
 
@@ -102,7 +105,7 @@ class MonocularPoseCorrector:
     def try_add_scale_estimate(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray, *,
                                min_dist: float = 0.1) -> None:
         """
-        Try to add a scale estimate to the pose corrector.
+        Try to add a scale estimate to the globaliser.
 
         .. note::
             This estimates the scale via dividing the distance moved from the reference pose as estimated

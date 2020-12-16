@@ -16,7 +16,8 @@ setup(
     include_package_data=True,
     install_requires=[
         "numpy",
-        "opencv-contrib-python==3.4.2.16"
+        "opencv-contrib-python==3.4.2.16",
+        "vg"
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

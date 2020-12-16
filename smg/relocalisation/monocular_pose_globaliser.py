@@ -70,8 +70,10 @@ class MonocularPoseGlobaliser:
         # If a fixed height has been set, use it to correct for any scale drift.
         if self.__fixed_height is not None:
             height: float = vg.scalar_projection(tracker_w_t_c[0:3, 3], self.__up)
-            metric_tracker_i_t_c *= height / self.__fixed_height
-            tracker_w_t_c = metric_tracker_w_t_i @ metric_tracker_i_t_c
+            tracker_w_t_c[0:3, 3] *= self.__fixed_height / height
+
+            if self.__debug:
+                print(f"Dynamic scaling factor: {self.__fixed_height} / {height} = {self.__fixed_height / height}")
 
         return tracker_w_t_c
 
@@ -84,6 +86,9 @@ class MonocularPoseGlobaliser:
         """
         self.__fixed_height = vg.scalar_projection(tracker_w_t_c[0:3, 3], up)
         self.__up = up
+
+        if self.__debug:
+            print(f"Fixed height to: {self.__fixed_height}")
 
     def has_fixed_height(self) -> bool:
         """

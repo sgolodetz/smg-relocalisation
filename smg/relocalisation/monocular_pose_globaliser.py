@@ -85,7 +85,7 @@ class MonocularPoseGlobaliser:
         """
         return self.__fixed_height is not None
 
-    def has_reference(self) -> bool:
+    def has_reference_space(self) -> bool:
         """
         Get whether or not the globaliser currently has a reference space.
 
@@ -144,8 +144,8 @@ class MonocularPoseGlobaliser:
                                     as estimated by the tracker.
         :param relocaliser_w_t_c:   A metric transformation from current camera space to world space, as estimated
                                     by the relocaliser.
-        :param min_dist:            The minimum (metric) distance (in m) that the camera must be from the reference
-                                    pose to add a new scale estimate.
+        :param min_dist:            The minimum (metric) distance that the camera must be from the reference pose
+                                    to add a new scale estimate.
         """
         # Calculate the non-metric distance moved from the reference pose as estimated by the tracker.
         tracker_offset: np.ndarray = tracker_i_t_c[0:3, 3] - self.__tracker_i_t_r[0:3, 3]
@@ -161,7 +161,10 @@ class MonocularPoseGlobaliser:
             scale_estimate: float = relocaliser_dist / tracker_dist
 
             # If the scale estimate's at least somewhat reasonable:
-            if scale_estimate <= 5:
+            # FIXME: This is a hack to work around the fact that we're using the mean to average the scale estimates,
+            #        and we don't want to include obvious outliers in that calculation. A better fix would be to use
+            #        a more robust averaging process in the first place though - we should fix that ultimately.
+            if scale_estimate <= 5.0:
                 # Use it to update our overall estimate of the scale.
                 self.__scale_sum += scale_estimate
                 self.__scale_count += 1
@@ -170,6 +173,6 @@ class MonocularPoseGlobaliser:
                 # Output a debug message if asked.
                 if self.__debug:
                     print(
-                        f"Scale Calibration: "
+                        f"Added scale estimate: "
                         f"{relocaliser_dist}, {tracker_dist * self.__scale}, {scale_estimate}, {self.__scale}"
                     )

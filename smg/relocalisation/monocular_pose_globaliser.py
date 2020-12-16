@@ -1,4 +1,5 @@
 import numpy as np
+import vg
 
 from typing import Optional
 
@@ -8,16 +9,20 @@ class MonocularPoseGlobaliser:
 
     # CONSTRUCTOR
 
-    def __init__(self, *, debug: bool = True):
+    def __init__(self, *, debug: bool = False):
         """
         Construct a monocular pose globaliser.
 
         :param debug:   Whether or not to output debug messages.
         """
         self.__debug: bool = debug
+
         self.__scale: float = 1.0
         self.__scale_count: int = 0
         self.__scale_sum: float = 0.0
+
+        self.__fixed_height: Optional[float] = None
+        self.__up: Optional[np.ndarray] = None
 
         # A metric transformation from reference space to world space, as estimated by the relocaliser.
         self.__relocaliser_w_t_r: Optional[np.ndarray] = None
@@ -45,16 +50,48 @@ class MonocularPoseGlobaliser:
         :return:                A metric transformation from current camera space to world space.
         """
         # Make a metric transformation from reference space to initial camera space.
-        scaled_tracker_i_t_r: np.ndarray = self.__tracker_i_t_r.copy()
-        scaled_tracker_i_t_r[0:3, 3] *= self.__scale
+        # TODO: This could be calculated in advance.
+        metric_tracker_i_t_r: np.ndarray = self.__tracker_i_t_r.copy()
+        metric_tracker_i_t_r[0:3, 3] *= self.__scale
+
+        # Make a metric transformation from initial camera space to world space.
+        # TODO: This could also be calculated in advance.
+        # wTi = wTr . (iTr)^-1
+        metric_tracker_w_t_i: np.ndarray = self.__relocaliser_w_t_r @ np.linalg.inv(metric_tracker_i_t_r)
 
         # Make a metric transformation from current camera space to initial camera space.
-        scaled_tracker_i_t_c: np.ndarray = tracker_i_t_c.copy()
-        scaled_tracker_i_t_c[0:3, 3] *= self.__scale
+        metric_tracker_i_t_c: np.ndarray = tracker_i_t_c.copy()
+        metric_tracker_i_t_c[0:3, 3] *= self.__scale
 
         # Make and return a metric transformation from current camera space to world space.
-        # wTc = wTr . (iTr)^-1 . iTc = wTr . rTi . iTc
-        return self.__relocaliser_w_t_r @ np.linalg.inv(scaled_tracker_i_t_r) @ scaled_tracker_i_t_c
+        # wTc = wTi . iTc
+        tracker_w_t_c: np.ndarray = metric_tracker_w_t_i @ metric_tracker_i_t_c
+
+        # If a fixed height has been set, use it to correct for any scale drift.
+        if self.__fixed_height is not None:
+            height: float = vg.scalar_projection(tracker_w_t_c[0:3, 3], self.__up)
+            metric_tracker_i_t_c *= height / self.__fixed_height
+            tracker_w_t_c = metric_tracker_w_t_i @ metric_tracker_i_t_c
+
+        return tracker_w_t_c
+
+    def fix_height(self, tracker_w_t_c: np.ndarray, *, up: np.ndarray = np.array([0, -1, 0])) -> None:
+        """
+        TODO
+
+        :param tracker_w_t_c:   TODO
+        :param up:              TODO
+        """
+        self.__fixed_height = vg.scalar_projection(tracker_w_t_c[0:3, 3], up)
+        self.__up = up
+
+    def has_fixed_height(self) -> bool:
+        """
+        Get whether or not a fixed height has been set.
+
+        :return:    True, if a fixed height has been set, or False otherwise.
+        """
+        return self.__fixed_height is not None
 
     def has_reference(self) -> bool:
         """
@@ -63,26 +100,6 @@ class MonocularPoseGlobaliser:
         :return:    True, if the globaliser currently has a reference space, or False otherwise.
         """
         return self.__relocaliser_w_t_r is not None
-
-    def maintain_height(self) -> None:
-        """
-        TODO
-        """
-        # TODO
-        pass
-
-    def reset(self) -> None:
-        """
-        Reset the globaliser.
-        """
-        # Clear the reference space.
-        self.__relocaliser_w_t_r = None
-        self.__tracker_i_t_r = None
-
-        # Reset the scale.
-        self.__scale = 1.0
-        self.__scale_count = 0
-        self.__scale_sum = 0.0
 
     def set_reference_space(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray) -> None:
         """
@@ -101,6 +118,10 @@ class MonocularPoseGlobaliser:
         self.__scale = 1.0
         self.__scale_count = 0
         self.__scale_sum = 0.0
+
+        # Clear any fixed height that was being used.
+        self.__fixed_height = None
+        self.__up = None
 
     def try_add_scale_estimate(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray, *,
                                min_dist: float = 0.1) -> None:
@@ -131,11 +152,16 @@ class MonocularPoseGlobaliser:
             # Make a new scale estimate.
             scale_estimate: float = relocaliser_dist / tracker_dist
 
-            # Use it to update our overall estimate of the scale.
-            self.__scale_sum += scale_estimate
-            self.__scale_count += 1
-            self.__scale = self.__scale_sum / self.__scale_count
+            # If the scale estimate's at least somewhat reasonable:
+            if scale_estimate <= 5:
+                # Use it to update our overall estimate of the scale.
+                self.__scale_sum += scale_estimate
+                self.__scale_count += 1
+                self.__scale = self.__scale_sum / self.__scale_count
 
-            # Output a debug message if asked.
-            if self.__debug:
-                print(relocaliser_dist, tracker_dist * self.__scale, scale_estimate, self.__scale)
+                # Output a debug message if asked.
+                if self.__debug:
+                    print(
+                        f"Scale Calibration: "
+                        f"{relocaliser_dist}, {tracker_dist * self.__scale}, {scale_estimate}, {self.__scale}"
+                    )

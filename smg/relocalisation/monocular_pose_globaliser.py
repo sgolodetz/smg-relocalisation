@@ -63,7 +63,7 @@ class MonocularPoseGlobaliser:
         metric_tracker_i_t_c: np.ndarray = tracker_i_t_c.copy()
         metric_tracker_i_t_c[0:3, 3] *= self.__scale
 
-        # Make and return a metric transformation from current camera space to world space.
+        # Make a metric transformation from current camera space to world space.
         # wTc = wTi . iTc
         tracker_w_t_c: np.ndarray = metric_tracker_w_t_i @ metric_tracker_i_t_c
 
@@ -76,19 +76,6 @@ class MonocularPoseGlobaliser:
                 print(f"Dynamic scaling factor: {self.__fixed_height} / {height} = {self.__fixed_height / height}")
 
         return tracker_w_t_c
-
-    def fix_height(self, tracker_w_t_c: np.ndarray, *, up: np.ndarray = np.array([0, -1, 0])) -> None:
-        """
-        TODO
-
-        :param tracker_w_t_c:   TODO
-        :param up:              TODO
-        """
-        self.__fixed_height = vg.scalar_projection(tracker_w_t_c[0:3, 3], up)
-        self.__up = up
-
-        if self.__debug:
-            print(f"Fixed height to: {self.__fixed_height}")
 
     def has_fixed_height(self) -> bool:
         """
@@ -105,6 +92,22 @@ class MonocularPoseGlobaliser:
         :return:    True, if the globaliser currently has a reference space, or False otherwise.
         """
         return self.__relocaliser_w_t_r is not None
+
+    def set_fixed_height(self, tracker_w_t_c: np.ndarray, *, up: np.ndarray = np.array([0, -1, 0])) -> None:
+        """
+        Promise that the camera will stay at its current height from here on out.
+
+        .. note::
+            This can be used to mitigate scale drift.
+
+        :param tracker_w_t_c:   A metric transformation from current camera space to world space.
+        :param up:              The "up" direction of the camera (needed to determine the height).
+        """
+        self.__fixed_height = vg.scalar_projection(tracker_w_t_c[0:3, 3], up)
+        self.__up = up
+
+        if self.__debug:
+            print(f"Setting fixed height to: {self.__fixed_height}")
 
     def set_reference_space(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray) -> None:
         """

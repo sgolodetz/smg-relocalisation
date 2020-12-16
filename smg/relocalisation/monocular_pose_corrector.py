@@ -15,8 +15,10 @@ class MonocularPoseCorrector:
         :param debug:   Whether or not to output debug messages.
         """
         self.__debug: bool = debug
-        self.__reference_relocaliser_w_t_c: Optional[np.ndarray] = None
-        self.__reference_tracker_i_t_c: Optional[np.ndarray] = None
+        # A metric transformation from reference camera space to world space, as estimated by the relocaliser.
+        self.__relocaliser_w_t_r: Optional[np.ndarray] = None
+        # A non-metric transformation from reference camera space to initial camera space, as estimated by the tracker.
+        self.__tracker_i_t_r: Optional[np.ndarray] = None
         self.__scale: float = 1.0
         self.__scale_count: int = 0
         self.__scale_sum: float = 0.0
@@ -39,42 +41,25 @@ class MonocularPoseCorrector:
                                 as estimated by the tracker.
         :return:                A metric transformation from current camera space to world space.
         """
-        scaled_reference_tracker_i_t_c: np.ndarray = self.__reference_tracker_i_t_c.copy()
-        scaled_reference_tracker_i_t_c[0:3, 3] *= self.__scale
+        # Make a metric transformation from reference camera space to initial camera space.
+        scaled_tracker_i_t_r: np.ndarray = self.__tracker_i_t_r.copy()
+        scaled_tracker_i_t_r[0:3, 3] *= self.__scale
+
+        # Make a metric transformation from current camera space to initial camera space.
         scaled_tracker_i_t_c: np.ndarray = tracker_i_t_c.copy()
         scaled_tracker_i_t_c[0:3, 3] *= self.__scale
-        # wTc = wTi . iTc
-        return self.__reference_relocaliser_w_t_c @ np.linalg.inv(scaled_reference_tracker_i_t_c) @ scaled_tracker_i_t_c
 
-    def calibrate(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray, *, min_norm: float = 0.1) -> None:
-        """
-        TODO
-
-        :param tracker_i_t_c:       A non-metric transformation from current camera space to initial camera space,
-                                    as estimated by the tracker.
-        :param relocaliser_w_t_c:   A metric transformation from current camera space to world space, as estimated
-                                    by the relocaliser.
-        :param min_norm:            TODO
-        """
-        tracker_offset: np.ndarray = tracker_i_t_c[0:3, 3] - self.__reference_tracker_i_t_c[0:3, 3]
-        relocaliser_offset: np.ndarray = relocaliser_w_t_c[0:3, 3] - self.__reference_relocaliser_w_t_c[0:3, 3]
-        tracker_norm: float = np.linalg.norm(tracker_offset)
-        relocaliser_norm: float = np.linalg.norm(relocaliser_offset)
-        if tracker_norm > 0 and relocaliser_norm >= min_norm:
-            scale_estimate: float = relocaliser_norm / tracker_norm
-            self.__scale_sum += scale_estimate
-            self.__scale_count += 1
-            self.__scale = self.__scale_sum / self.__scale_count
-            if self.__debug:
-                print(relocaliser_norm, tracker_norm * self.__scale, scale_estimate, self.__scale)
+        # Make and return a metric transformation from current camera space to world space.
+        # wTc = wTr . (iTr)^-1 . iTc = wTr . rTi . iTc
+        return self.__relocaliser_w_t_r @ np.linalg.inv(scaled_tracker_i_t_r) @ scaled_tracker_i_t_c
 
     def has_reference(self) -> bool:
         """
-        TODO
+        Get whether or not the pose corrector currently has a reference camera space.
 
-        :return:    TODO
+        :return:    True, if the pose corrector currently has a reference camera space, or False otherwise.
         """
-        return self.__reference_relocaliser_w_t_c is not None
+        return self.__relocaliser_w_t_r is not None
 
     def maintain_height(self) -> None:
         """
@@ -87,21 +72,67 @@ class MonocularPoseCorrector:
         """
         Reset the pose corrector.
         """
-        self.__reference_relocaliser_w_t_c = None
-        self.__reference_tracker_i_t_c = None
+        # Clear the reference camera space.
+        self.__relocaliser_w_t_r = None
+        self.__tracker_i_t_r = None
+
+        # Reset the scale.
         self.__scale = 1.0
         self.__scale_count = 0
         self.__scale_sum = 0.0
 
     def set_reference(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray) -> None:
         """
-        TODO
+        Set the reference camera space to the current camera space.
 
-        :param tracker_i_t_c:       TODO
-        :param relocaliser_w_t_c:   TODO
+        :param tracker_i_t_c:       A non-metric transformation from current camera space to initial camera space,
+                                    as estimated by the tracker.
+        :param relocaliser_w_t_c:   A metric transformation from current camera space to world space, as estimated
+                                    by the relocaliser.
         """
-        self.__reference_relocaliser_w_t_c = relocaliser_w_t_c
-        self.__reference_tracker_i_t_c = tracker_i_t_c
+        # Set the reference camera space to the current camera space.
+        self.__relocaliser_w_t_r = relocaliser_w_t_c
+        self.__tracker_i_t_r = tracker_i_t_c
+
+        # Reset the scale.
         self.__scale = 1.0
         self.__scale_count = 0
         self.__scale_sum = 0.0
+
+    def try_add_scale_estimate(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray, *,
+                               min_dist: float = 0.1) -> None:
+        """
+        Try to add a scale estimate to the pose corrector.
+
+        .. note::
+            This estimates the scale via dividing the distance moved from the reference pose as estimated
+            by the relocaliser by the distance moved from the reference pose as estimated by the tracker.
+
+        :param tracker_i_t_c:       A non-metric transformation from current camera space to initial camera space,
+                                    as estimated by the tracker.
+        :param relocaliser_w_t_c:   A metric transformation from current camera space to world space, as estimated
+                                    by the relocaliser.
+        :param min_dist:            The minimum (metric) distance (in m) that the camera must be from the reference
+                                    pose to add a new scale estimate.
+        """
+        # Calculate the non-metric distance moved from the reference pose as estimated by the tracker.
+        tracker_offset: np.ndarray = tracker_i_t_c[0:3, 3] - self.__tracker_i_t_r[0:3, 3]
+        tracker_dist: float = np.linalg.norm(tracker_offset)
+
+        # Calculate the metric distance moved from the reference pose as estimated by the relocaliser.
+        relocaliser_offset: np.ndarray = relocaliser_w_t_c[0:3, 3] - self.__relocaliser_w_t_r[0:3, 3]
+        relocaliser_dist: float = np.linalg.norm(relocaliser_offset)
+
+        # If the camera is far enough from the reference pose to reliably estimate the scale:
+        if relocaliser_dist >= min_dist and tracker_dist > 0:
+            # Make a new scale estimate.
+            scale_estimate: float = relocaliser_dist / tracker_dist
+
+            # Use it to update our overall estimate of the scale.
+            self.__scale_sum += scale_estimate
+            self.__scale_count += 1
+            self.__scale = self.__scale_sum / self.__scale_count
+
+            # Output a debug message if asked.
+            if self.__debug:
+                print(relocaliser_dist, tracker_dist * self.__scale, scale_estimate, self.__scale)

@@ -1,6 +1,6 @@
 import numpy as np
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from smg.relocalisation.backends.sparse_pnp_backend import SparsePnPBackend
 from smg.relocalisation.frontends.aruco_correspondence_generator import ArUcoCorrespondenceGenerator
@@ -22,7 +22,7 @@ class ArUcoPnPRelocaliser:
     # PUBLIC METHODS
 
     def estimate_pose(self, image: np.ndarray, intrinsics: Tuple[float, float, float, float], *,
-                      draw_detections: bool = False, print_correspondences: bool = False) -> np.ndarray:
+                      draw_detections: bool = False, print_correspondences: bool = False) -> Optional[np.ndarray]:
         """
         Try to estimate the pose of the camera from an image of the scene being viewed.
 

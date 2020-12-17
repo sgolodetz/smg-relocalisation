@@ -7,6 +7,15 @@ from typing import Optional
 class MonocularPoseGlobaliser:
     """Used to correct the scale of monocular poses and transform them into a global coordinate system."""
 
+    # ENUMERATIONS
+
+    class EState(int):
+        pass
+
+    UNTRAINED: EState = 0
+    TRAINING: EState = 1
+    ACTIVE: EState = 2
+
     # CONSTRUCTOR
 
     def __init__(self, *, debug: bool = False):
@@ -16,12 +25,11 @@ class MonocularPoseGlobaliser:
         :param debug:   Whether or not to output debug messages.
         """
         self.__debug: bool = debug
-
+        self.__fixed_height: Optional[float] = None
         self.__scale: float = 1.0
         self.__scale_count: int = 0
         self.__scale_sum: float = 0.0
-
-        self.__fixed_height: Optional[float] = None
+        self.__state: MonocularPoseGlobaliser.EState = MonocularPoseGlobaliser.UNTRAINED
         self.__up: Optional[np.ndarray] = None
 
         # A metric transformation from reference space to world space, as estimated by the relocaliser.
@@ -77,6 +85,23 @@ class MonocularPoseGlobaliser:
 
         return tracker_w_t_c
 
+    def finish_training(self) -> None:
+        """
+        Finish training the globaliser.
+        """
+        if self.__state == MonocularPoseGlobaliser.TRAINING:
+            self.__state = MonocularPoseGlobaliser.ACTIVE
+        else:
+            raise RuntimeError("Cannot finish training a pose globaliser before starting to do so")
+
+    def get_state(self) -> EState:
+        """
+        Get the state of the globaliser.
+
+        :return:    The state of the globaliser.
+        """
+        return self.__state
+
     def has_fixed_height(self) -> bool:
         """
         Get whether or not a fixed height has been set.
@@ -84,14 +109,6 @@ class MonocularPoseGlobaliser:
         :return:    True, if a fixed height has been set, or False otherwise.
         """
         return self.__fixed_height is not None
-
-    def has_reference_space(self) -> bool:
-        """
-        Get whether or not the globaliser currently has a reference space.
-
-        :return:    True, if the globaliser currently has a reference space, or False otherwise.
-        """
-        return self.__relocaliser_w_t_r is not None
 
     def set_fixed_height(self, tracker_w_t_c: np.ndarray, *, up: np.ndarray = np.array([0, -1, 0])) -> None:
         """
@@ -109,9 +126,9 @@ class MonocularPoseGlobaliser:
         if self.__debug:
             print(f"Setting fixed height to: {self.__fixed_height}")
 
-    def set_reference_space(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray) -> None:
+    def start_training(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray) -> None:
         """
-        Set the reference space to the current camera space.
+        Start training the globaliser.
 
         :param tracker_i_t_c:       A non-metric transformation from current camera space to initial camera space,
                                     as estimated by the tracker.
@@ -131,13 +148,16 @@ class MonocularPoseGlobaliser:
         self.__fixed_height = None
         self.__up = None
 
-    def try_add_scale_estimate(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray, *,
-                               min_dist: float = 0.1) -> None:
+        # Set the globaliser's state.
+        self.__state = MonocularPoseGlobaliser.TRAINING
+
+    def train(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray, *, min_dist: float = 0.1) -> None:
         """
-        Try to add a scale estimate to the globaliser.
+        Train the globaliser using a sample consisting of transformations estimated by the tracker
+        and the relocaliser at the same point in time.
 
         .. note::
-            This estimates the scale via dividing the distance moved from the reference pose as estimated
+            Training involves estimating the scale by dividing the distance moved from the reference pose as estimated
             by the relocaliser by the distance moved from the reference pose as estimated by the tracker.
 
         :param tracker_i_t_c:       A non-metric transformation from current camera space to initial camera space,

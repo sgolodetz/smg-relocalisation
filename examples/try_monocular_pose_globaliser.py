@@ -67,7 +67,8 @@ def main() -> None:
             voc_file="C:/orbslam2/Vocabulary/ORBvoc.txt", wait_till_ready=False
         ) as tracker:
             with open("relocaliser_trajectory.txt", "w") as rf, \
-                    open("tracker_trajectory.txt", "w") as tf:
+                    open("tracker_trajectory.txt", "w") as tf, \
+                    open("unscaled_tracker_trajectory.txt", "w") as utf:
                 timestamp: float = 0.0
                 while True:
                     # Get an image from the drone and show it to the user.
@@ -110,7 +111,11 @@ def main() -> None:
                         print_frame_poses(tracker_w_t_c, relocaliser_w_t_c)
 
                         # Save the current global tracker and relocaliser poses, if available.
+                        unscaled_tracker_w_t_c: np.ndarray = pose_globaliser.apply(
+                            tracker_i_t_c, suppress_scaling=True
+                        )
                         TrajectoryUtil.write_tum_pose(tf, timestamp, tracker_w_t_c)
+                        TrajectoryUtil.write_tum_pose(utf, timestamp, unscaled_tracker_w_t_c)
                         if relocaliser_w_t_c is not None:
                             TrajectoryUtil.write_tum_pose(rf, timestamp, relocaliser_w_t_c)
                         timestamp += 1.0

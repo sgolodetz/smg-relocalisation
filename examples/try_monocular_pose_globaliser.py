@@ -74,9 +74,9 @@ def main() -> None:
 
             try:
                 if save_trajectories:
-                    relocaliser_trajectory_file = open("relocaliser_trajectory.txt", "w")
-                    tracker_trajectory_file = open("tracker_trajectory.txt", "w")
-                    unscaled_tracker_trajectory_file = open("unscaled_tracker_trajectory.txt", "w")
+                    relocaliser_trajectory_file = open("trajectory-relocaliser.txt", "w")
+                    tracker_trajectory_file = open("trajectory-tracker.txt", "w")
+                    unscaled_tracker_trajectory_file = open("trajectory-tracker-unscaled.txt", "w")
 
                 timestamp: float = 0.0
 
@@ -125,16 +125,11 @@ def main() -> None:
                             unscaled_tracker_w_t_c: np.ndarray = pose_globaliser.apply(
                                 tracker_i_t_c, suppress_scaling=True
                             )
-                            TrajectoryUtil.write_tum_pose(
-                                tracker_trajectory_file, timestamp, tracker_w_t_c
-                            )
-                            TrajectoryUtil.write_tum_pose(
-                                unscaled_tracker_trajectory_file, timestamp, unscaled_tracker_w_t_c
-                            )
+                            write_tum_pose = TrajectoryUtil.write_tum_pose  # for brevity
+                            write_tum_pose(tracker_trajectory_file, timestamp, tracker_w_t_c)
+                            write_tum_pose(unscaled_tracker_trajectory_file, timestamp, unscaled_tracker_w_t_c)
                             if relocaliser_w_t_c is not None:
-                                TrajectoryUtil.write_tum_pose(
-                                    relocaliser_trajectory_file, timestamp, relocaliser_w_t_c
-                                )
+                                write_tum_pose(relocaliser_trajectory_file, timestamp, relocaliser_w_t_c)
                             timestamp += 1.0
 
                         # If the user presses 'f', tell the globaliser that the camera will stay at its current height

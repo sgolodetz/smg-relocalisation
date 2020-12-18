@@ -37,6 +37,7 @@ def main() -> None:
         "--drone_type", "-t", type=str, required=True, choices=("ardrone2", "tello"),
         help="the drone type"
     )
+    parser.add_argument("--save_trajectories", action="store_true", help="whether to save the trajectories to disk")
     args: dict = vars(parser.parse_args())
 
     # Set up a relocaliser that uses an ArUco marker of a known size and at a known height to relocalise.
@@ -59,6 +60,7 @@ def main() -> None:
     }
 
     drone_type: str = args.get("drone_type")
+    save_trajectories: bool = args.get("save_trajectories")
 
     with DroneFactory.make_drone(drone_type, **kwargs[drone_type]) as drone:
         # Track the pose of the drone using ORB-SLAM.
@@ -66,10 +68,18 @@ def main() -> None:
             settings_file=f"settings-{drone_type}.yaml", use_viewer=True,
             voc_file="C:/orbslam2/Vocabulary/ORBvoc.txt", wait_till_ready=False
         ) as tracker:
-            with open("relocaliser_trajectory.txt", "w") as rf, \
-                    open("tracker_trajectory.txt", "w") as tf, \
-                    open("unscaled_tracker_trajectory.txt", "w") as utf:
+            relocaliser_trajectory_file = None
+            tracker_trajectory_file = None
+            unscaled_tracker_trajectory_file = None
+
+            try:
+                if save_trajectories:
+                    relocaliser_trajectory_file = open("relocaliser_trajectory.txt", "w")
+                    tracker_trajectory_file = open("tracker_trajectory.txt", "w")
+                    unscaled_tracker_trajectory_file = open("unscaled_tracker_trajectory.txt", "w")
+
                 timestamp: float = 0.0
+
                 while True:
                     # Get an image from the drone and show it to the user.
                     image: np.ndarray = drone.get_image()
@@ -110,15 +120,22 @@ def main() -> None:
                         # Print the current global tracker and relocaliser poses, if available.
                         print_frame_poses(tracker_w_t_c, relocaliser_w_t_c)
 
-                        # Save the current global tracker and relocaliser poses, if available.
-                        unscaled_tracker_w_t_c: np.ndarray = pose_globaliser.apply(
-                            tracker_i_t_c, suppress_scaling=True
-                        )
-                        TrajectoryUtil.write_tum_pose(tf, timestamp, tracker_w_t_c)
-                        TrajectoryUtil.write_tum_pose(utf, timestamp, unscaled_tracker_w_t_c)
-                        if relocaliser_w_t_c is not None:
-                            TrajectoryUtil.write_tum_pose(rf, timestamp, relocaliser_w_t_c)
-                        timestamp += 1.0
+                        # If requested, save the current tracker and relocaliser poses, if available.
+                        if save_trajectories:
+                            unscaled_tracker_w_t_c: np.ndarray = pose_globaliser.apply(
+                                tracker_i_t_c, suppress_scaling=True
+                            )
+                            TrajectoryUtil.write_tum_pose(
+                                tracker_trajectory_file, timestamp, tracker_w_t_c
+                            )
+                            TrajectoryUtil.write_tum_pose(
+                                unscaled_tracker_trajectory_file, timestamp, unscaled_tracker_w_t_c
+                            )
+                            if relocaliser_w_t_c is not None:
+                                TrajectoryUtil.write_tum_pose(
+                                    relocaliser_trajectory_file, timestamp, relocaliser_w_t_c
+                                )
+                            timestamp += 1.0
 
                         # If the user presses 'f', tell the globaliser that the camera will stay at its current height
                         # from here on out.
@@ -138,6 +155,13 @@ def main() -> None:
                         # produced a pose for this frame, use the two current poses to start the training process.
                         if c == ord('t') and relocaliser_w_t_c is not None:
                             pose_globaliser.start_training(tracker_i_t_c, relocaliser_w_t_c)
+            finally:
+                if relocaliser_trajectory_file is not None:
+                    relocaliser_trajectory_file.close()
+                if tracker_trajectory_file is not None:
+                    tracker_trajectory_file.close()
+                if unscaled_tracker_trajectory_file is not None:
+                    unscaled_tracker_trajectory_file.close()
 
 
 if __name__ == "__main__":

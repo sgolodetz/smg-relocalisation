@@ -8,6 +8,7 @@ from smg.pyorbslam2 import MonocularTracker
 from smg.relocalisation import ArUcoPnPRelocaliser
 from smg.relocalisation.poseglobalisers import MonocularPoseGlobaliser
 from smg.rotory import DroneFactory
+from smg.utility import TrajectoryUtil
 
 
 def print_frame_poses(tracker_w_t_c: np.ndarray, relocaliser_w_t_c: Optional[np.ndarray]) -> None:
@@ -65,62 +66,73 @@ def main() -> None:
             settings_file=f"settings-{drone_type}.yaml", use_viewer=True,
             voc_file="C:/orbslam2/Vocabulary/ORBvoc.txt", wait_till_ready=False
         ) as tracker:
-            while True:
-                # Get an image from the drone and show it to the user.
-                image: np.ndarray = drone.get_image()
-                cv2.imshow("Image", image)
-                c: int = cv2.waitKey(1)
+            with open("relocaliser_trajectory.txt", "w") as rf, \
+                    open("tracker_trajectory.txt", "w") as tf:
+                timestamp: float = 0.0
+                while True:
+                    # Get an image from the drone and show it to the user.
+                    image: np.ndarray = drone.get_image()
+                    cv2.imshow("Image", image)
+                    c: int = cv2.waitKey(1)
 
-                # If the user presses 'q', exit.
-                if c == ord('q'):
-                    break
+                    # If the user presses 'q', exit.
+                    if c == ord('q'):
+                        break
 
-                # If the tracker is not yet ready, continue.
-                if not tracker.is_ready():
-                    continue
+                    # If the tracker is not yet ready, continue.
+                    if not tracker.is_ready():
+                        continue
 
-                # Try to estimate a transformation from initial camera space to current camera space using the tracker.
-                tracker_c_t_i: np.ndarray = tracker.estimate_pose(image)
+                    # Try to estimate a transformation from initial camera space to current camera space
+                    # using the tracker.
+                    tracker_c_t_i: np.ndarray = tracker.estimate_pose(image)
 
-                # If this fails, continue.
-                if tracker_c_t_i is None:
-                    continue
+                    # If this fails, continue.
+                    if tracker_c_t_i is None:
+                        continue
 
-                # Calculate the inverse transformation from current camera space to initial camera space for later use.
-                tracker_i_t_c: np.ndarray = np.linalg.inv(tracker_c_t_i)
+                    # Calculate the inverse transformation from current camera space to initial camera space
+                    # for later use.
+                    tracker_i_t_c: np.ndarray = np.linalg.inv(tracker_c_t_i)
 
-                # Try to estimate a transformation from current camera space to world space using the relocaliser.
-                relocaliser_w_t_c: Optional[np.ndarray] = relocaliser.estimate_pose(
-                    image, drone.get_intrinsics(), draw_detections=True, print_correspondences=False
-                )
+                    # Try to estimate a transformation from current camera space to world space using the relocaliser.
+                    relocaliser_w_t_c: Optional[np.ndarray] = relocaliser.estimate_pose(
+                        image, drone.get_intrinsics(), draw_detections=True, print_correspondences=False
+                    )
 
-                # Get the current state of the pose globaliser, and take action accordingly.
-                state: MonocularPoseGlobaliser.EState = pose_globaliser.get_state()
-                if state == MonocularPoseGlobaliser.ACTIVE:
-                    # If the pose globaliser's active, apply it to the tracker pose to obtain the global tracker pose.
-                    tracker_w_t_c: np.ndarray = pose_globaliser.apply(tracker_i_t_c)
+                    # Get the current state of the pose globaliser, and take action accordingly.
+                    state: MonocularPoseGlobaliser.EState = pose_globaliser.get_state()
+                    if state == MonocularPoseGlobaliser.ACTIVE:
+                        # If the globaliser's active, apply it to the tracker pose to obtain the global tracker pose.
+                        tracker_w_t_c: np.ndarray = pose_globaliser.apply(tracker_i_t_c)
 
-                    # Print the current global tracker and relocaliser poses, if available, for comparison purposes.
-                    print_frame_poses(tracker_w_t_c, relocaliser_w_t_c)
+                        # Print the current global tracker and relocaliser poses, if available.
+                        print_frame_poses(tracker_w_t_c, relocaliser_w_t_c)
 
-                    # If the user presses 'f', promise the globaliser that the camera will stay at its current height
-                    # from here on out.
-                    if c == ord('f'):
-                        pose_globaliser.set_fixed_height(tracker_w_t_c)
-                elif state == MonocularPoseGlobaliser.TRAINING:
-                    # If the pose globaliser's being trained and the relocaliser produced a pose for this frame,
-                    # train the globaliser using the tracker pose and the relocaliser pose.
-                    if relocaliser_w_t_c is not None:
-                        pose_globaliser.train(tracker_i_t_c, relocaliser_w_t_c)
+                        # Save the current global tracker and relocaliser poses, if available.
+                        TrajectoryUtil.write_tum_pose(tf, timestamp, tracker_w_t_c)
+                        if relocaliser_w_t_c is not None:
+                            TrajectoryUtil.write_tum_pose(rf, timestamp, relocaliser_w_t_c)
+                        timestamp += 1.0
 
-                    # If the user presses 'r', terminate the globaliser's training process.
-                    if c == ord('r'):
-                        pose_globaliser.finish_training()
-                elif state == MonocularPoseGlobaliser.UNTRAINED:
-                    # If the pose globaliser's training hasn't started yet, the user presses 't' and the relocaliser
-                    # produced a pose for this frame, use the two current poses to start the training process.
-                    if c == ord('t') and relocaliser_w_t_c is not None:
-                        pose_globaliser.start_training(tracker_i_t_c, relocaliser_w_t_c)
+                        # If the user presses 'f', tell the globaliser that the camera will stay at its current height
+                        # from here on out.
+                        if c == ord('f'):
+                            pose_globaliser.set_fixed_height(tracker_w_t_c)
+                    elif state == MonocularPoseGlobaliser.TRAINING:
+                        # If the pose globaliser's being trained and the relocaliser produced a pose for this frame,
+                        # train the globaliser using the tracker pose and the relocaliser pose.
+                        if relocaliser_w_t_c is not None:
+                            pose_globaliser.train(tracker_i_t_c, relocaliser_w_t_c)
+
+                        # If the user presses 'r', terminate the globaliser's training process.
+                        if c == ord('r'):
+                            pose_globaliser.finish_training()
+                    elif state == MonocularPoseGlobaliser.UNTRAINED:
+                        # If the pose globaliser's training hasn't started yet, the user presses 't' and the relocaliser
+                        # produced a pose for this frame, use the two current poses to start the training process.
+                        if c == ord('t') and relocaliser_w_t_c is not None:
+                            pose_globaliser.start_training(tracker_i_t_c, relocaliser_w_t_c)
 
 
 if __name__ == "__main__":

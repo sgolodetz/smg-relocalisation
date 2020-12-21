@@ -2,8 +2,8 @@ import numpy as np
 
 from typing import Dict, List, Optional, Tuple
 
-from smg.relocalisation.backends.sparse_pnp_backend import SparsePnPBackend
-from smg.relocalisation.frontends.aruco_correspondence_generator import ArUcoCorrespondenceGenerator
+from .backends.sparse_pnp_backend import SparsePnPBackend
+from .frontends.aruco_correspondence_generator import ArUcoCorrespondenceGenerator
 
 
 class ArUcoPnPRelocaliser:

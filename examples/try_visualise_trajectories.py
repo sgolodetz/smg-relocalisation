@@ -1,6 +1,6 @@
 import numpy as np
+import open3d as o3d
 
-from open3d.cpu.pybind.geometry import Geometry, LineSet
 from typing import List, Tuple
 
 from smg.open3d.visualisation_util import VisualisationUtil
@@ -27,21 +27,19 @@ def main():
     unscaled_tracker_trajectory = TrajectoryUtil.smooth_trajectory(unscaled_tracker_trajectory)
 
     # Create the Open3D geometries for the visualisation.
-    grid: LineSet = VisualisationUtil.make_voxel_grid([-2, -2, -2], [2, 0, 2], [1, 1, 1])
-    relocaliser_geoms: List[Geometry] = VisualisationUtil.make_geometries_for_trajectory(
-        relocaliser_trajectory, (0.0, 1.0, 0.0)
+    grid: o3d.geometry.LineSet = VisualisationUtil.make_voxel_grid([-2, -2, -2], [2, 0, 2], [1, 1, 1])
+    relocaliser_segments: o3d.geometry.LineSet = VisualisationUtil.make_trajectory_segments(
+        relocaliser_trajectory, colour=(0.0, 1.0, 0.0)
     )
-    tracker_geoms: List[Geometry] = VisualisationUtil.make_geometries_for_trajectory(
-        tracker_trajectory, (0.0, 0.0, 1.0)
+    tracker_segments: o3d.geometry.LineSet = VisualisationUtil.make_trajectory_segments(
+        tracker_trajectory, colour=(0.0, 0.0, 1.0)
     )
-    unscaled_tracker_geoms: List[Geometry] = VisualisationUtil.make_geometries_for_trajectory(
-        unscaled_tracker_trajectory, (1.0, 0.0, 0.0)
+    unscaled_tracker_segments: o3d.geometry.LineSet = VisualisationUtil.make_trajectory_segments(
+        unscaled_tracker_trajectory, colour=(1.0, 0.0, 0.0)
     )
 
     # Visualise the geometries.
-    VisualisationUtil.visualise_geometries(
-        [grid] + relocaliser_geoms + tracker_geoms + unscaled_tracker_geoms
-    )
+    VisualisationUtil.visualise_geometries([grid, relocaliser_segments, tracker_segments, unscaled_tracker_segments])
 
 
 if __name__ == "__main__":

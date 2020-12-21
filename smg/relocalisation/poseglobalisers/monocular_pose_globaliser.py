@@ -40,7 +40,7 @@ class MonocularPoseGlobaliser:
 
     # PUBLIC METHODS
 
-    def apply(self, tracker_i_t_c: np.ndarray) -> np.ndarray:
+    def apply(self, tracker_i_t_c: np.ndarray, *, suppress_scaling: bool = False) -> np.ndarray:
         """
         Convert a non-metric transformation from current camera space to initial camera space
         into a metric transformation from current camera space to world space.
@@ -53,14 +53,18 @@ class MonocularPoseGlobaliser:
             The transformations output by the monocular tracker are assumed to be non-metric, and their scale
             may drift over time.
 
-        :param tracker_i_t_c:   A non-metric transformation from current camera space to initial camera space,
-                                as estimated by the tracker.
-        :return:                A metric transformation from current camera space to world space.
+        :param tracker_i_t_c:       A non-metric transformation from current camera space to initial camera space,
+                                    as estimated by the tracker.
+        :param suppress_scaling:    Whether to globalise the pose without scaling it (for debugging purposes).
+        :return:                    A metric transformation from current camera space to world space.
         """
+        # Determine the scale to use (this will be the scale we've estimated, unless we're suppressing scaling).
+        scale: float = self.__scale if not suppress_scaling else 1.0
+
         # Make a metric transformation from reference space to initial camera space.
         # TODO: This could be calculated in advance.
         metric_tracker_i_t_r: np.ndarray = self.__tracker_i_t_r.copy()
-        metric_tracker_i_t_r[0:3, 3] *= self.__scale
+        metric_tracker_i_t_r[0:3, 3] *= scale
 
         # Make a metric transformation from initial camera space to world space.
         # TODO: This could also be calculated in advance.
@@ -69,14 +73,14 @@ class MonocularPoseGlobaliser:
 
         # Make a metric transformation from current camera space to initial camera space.
         metric_tracker_i_t_c: np.ndarray = tracker_i_t_c.copy()
-        metric_tracker_i_t_c[0:3, 3] *= self.__scale
+        metric_tracker_i_t_c[0:3, 3] *= scale
 
         # Make a metric transformation from current camera space to world space.
         # wTc = wTi . iTc
         tracker_w_t_c: np.ndarray = metric_tracker_w_t_i @ metric_tracker_i_t_c
 
-        # If a fixed height has been set, use it to correct for any scale drift.
-        if self.__fixed_height is not None:
+        # If a fixed height has been set and we're not suppressing scaling, use it to correct for any scale drift.
+        if self.__fixed_height is not None and not suppress_scaling:
             height: float = vg.scalar_projection(tracker_w_t_c[0:3, 3], self.__up)
             tracker_w_t_c[0:3, 3] *= self.__fixed_height / height
 

@@ -69,6 +69,17 @@ class DroneFSM:
             if throttle >= 0.5 > self.__throttle_prev:
                 self.__throttle_up_event.set()
 
+        # Update the drone's movement based on the pitch, roll and yaw values output by the joystick.
+        self.__drone.move_forward(self.__joystick.get_pitch())
+        self.__drone.turn(self.__joystick.get_yaw())
+
+        if self.__joystick.get_button(1) == 0:
+            self.__drone.move_right(0)
+            self.__drone.move_up(self.__joystick.get_roll())
+        else:
+            self.__drone.move_right(self.__joystick.get_roll())
+            self.__drone.move_up(0)
+
         # TODO: Comment here.
         tracker_i_t_c: Optional[np.ndarray] = np.linalg.inv(tracker_c_t_i) if tracker_c_t_i is not None else None
 
@@ -101,14 +112,11 @@ class DroneFSM:
         TODO
 
         .. note::
-            TODO: Throttle is either down (no fixed height) or up (fixed height)
+            TODO: Throttle starts down (no fixed height), can then be down or up (fixed height)
 
         :param tracker_i_t_c:       TODO
         :param relocaliser_w_t_c:   TODO
         """
-        # Update the drone's movement.
-        self.__update_drone_movement()
-
         # TODO
         if self.__throttle_down_event.is_set():
             # TODO
@@ -131,9 +139,6 @@ class DroneFSM:
         .. note::
             TODO: Throttle is up; either landing or on ground; takeoff -> C1; throttle down -> C3
         """
-        # Update the drone's movement.
-        self.__update_drone_movement()
-
         # If the user has told the drone to take off, return to the previous calibration step.
         if self.__takeoff_event.is_set():
             self.__calibration_state = DCS_STARTING_TRAINING
@@ -153,9 +158,6 @@ class DroneFSM:
         :param tracker_i_t_c:       TODO
         :param relocaliser_w_t_c:   TODO
         """
-        # Update the drone's movement.
-        self.__update_drone_movement()
-
         # Train the pose globaliser if possible.
         if tracker_i_t_c is not None and relocaliser_w_t_c is not None:
             self.__pose_globaliser.train(tracker_i_t_c, relocaliser_w_t_c)
@@ -179,9 +181,6 @@ class DroneFSM:
         :param tracker_i_t_c:       TODO
         :param relocaliser_w_t_c:   TODO
         """
-        # Update the drone's movement.
-        self.__update_drone_movement()
-
         # If the drone's successfully relocalised using the marker:
         if relocaliser_w_t_c is not None:
             # Start to train the pose globaliser. Note that this can safely be called repeatedly: this has the effect
@@ -204,24 +203,9 @@ class DroneFSM:
         .. note::
             The drone can be doing anything at this point - no calibration happens until the user throttles up.
         """
-        # Update the drone's movement.
-        self.__update_drone_movement()
-
         # If the user throttles up, start the calibration process.
         if self.__throttle_up_event.is_set():
             self.__calibration_state = DCS_STARTING_TRAINING
-
-    def __update_drone_movement(self) -> None:
-        """Update the drone's movement based on the pitch, roll and yaw values output by the joystick."""
-        self.__drone.move_forward(self.__joystick.get_pitch())
-        self.__drone.turn(self.__joystick.get_yaw())
-
-        if self.__joystick.get_button(1) == 0:
-            self.__drone.move_right(0)
-            self.__drone.move_up(self.__joystick.get_roll())
-        else:
-            self.__drone.move_right(self.__joystick.get_roll())
-            self.__drone.move_up(0)
 
 
 def main() -> None:

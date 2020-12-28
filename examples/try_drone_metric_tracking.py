@@ -5,9 +5,11 @@ os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame
 
 from argparse import ArgumentParser
+from OpenGL.GL import *
 from threading import Event
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
+from smg.opengl import OpenGLUtil
 from smg.relocalisation.poseglobalisers import MonocularPoseGlobaliser
 from smg.rotory import DroneFactory
 from smg.rotory.drones import Drone
@@ -47,38 +49,37 @@ class DroneFSM:
     def alive(self) -> bool:
         return not self.__should_terminate
 
-    def iterate(self, tracker_c_t_i: Optional[np.ndarray], relocaliser_w_t_c: Optional[np.ndarray]) -> None:
+    def get_calibration_state(self) -> EDroneCalibrationState:
+        return self.__calibration_state
+
+    def iterate(self, tracker_c_t_i: Optional[np.ndarray], relocaliser_w_t_c: Optional[np.ndarray],
+                takeoff_requested: bool, landing_requested: bool) -> None:
         # TODO: Comment here.
-        for event in pygame.event.get():
-            if event.type == pygame.JOYBUTTONDOWN:
-                # If Button 0 on the Futaba T6K is set to its "pressed" state, take off.
-                if event.button == 0:
-                    self.__drone.takeoff()
-                    self.__takeoff_event.set()
-            elif event.type == pygame.JOYBUTTONUP:
-                # If Button 0 on the Futaba T6K is set to its "released" state, land.
-                if event.button == 0:
-                    self.__drone.land()
-                    self.__landing_event.set()
+        if takeoff_requested:
+            # self.__drone.takeoff()
+            self.__takeoff_event.set()
+        elif landing_requested:
+            # self.__drone.land()
+            self.__landing_event.set()
 
         # TODO: Comment here.
         throttle: float = self.__joystick.get_throttle()
         if self.__throttle_prev is not None:
-            if throttle <= -0.5 < self.__throttle_prev:
+            if throttle <= 0.25 < self.__throttle_prev:
                 self.__throttle_down_event.set()
-            if throttle >= 0.5 > self.__throttle_prev:
+            if throttle >= 0.75 > self.__throttle_prev:
                 self.__throttle_up_event.set()
 
         # Update the drone's movement based on the pitch, roll and yaw values output by the joystick.
-        self.__drone.move_forward(self.__joystick.get_pitch())
-        self.__drone.turn(self.__joystick.get_yaw())
-
-        if self.__joystick.get_button(1) == 0:
-            self.__drone.move_right(0)
-            self.__drone.move_up(self.__joystick.get_roll())
-        else:
-            self.__drone.move_right(self.__joystick.get_roll())
-            self.__drone.move_up(0)
+        # self.__drone.move_forward(self.__joystick.get_pitch())
+        # self.__drone.turn(self.__joystick.get_yaw())
+        #
+        # if self.__joystick.get_button(1) == 0:
+        #     self.__drone.move_right(0)
+        #     self.__drone.move_up(self.__joystick.get_roll())
+        # else:
+        #     self.__drone.move_right(self.__joystick.get_roll())
+        #     self.__drone.move_up(0)
 
         # TODO: Comment here.
         tracker_i_t_c: Optional[np.ndarray] = np.linalg.inv(tracker_c_t_i) if tracker_c_t_i is not None else None
@@ -103,6 +104,9 @@ class DroneFSM:
         self.__takeoff_event.clear()
         self.__throttle_down_event.clear()
         self.__throttle_up_event.clear()
+
+    def terminate(self) -> None:
+        self.__should_terminate = True
 
     # PRIVATE METHODS
 
@@ -242,10 +246,47 @@ def main() -> None:
 
     drone_type: str = args.get("drone_type")
 
-    with DroneFactory.make_drone(drone_type, **kwargs[drone_type]) as drone:
-        state_machine: DroneFSM = DroneFSM(drone, joystick)
+    # with DroneFactory.make_drone(drone_type, **kwargs[drone_type]) as drone:
+    if True:
+        # Create the window.
+        window_size: Tuple[int, int] = (640, 480)
+        window_surface: pygame.Surface = pygame.display.set_mode(window_size, pygame.DOUBLEBUF | pygame.OPENGL)
+
+        # Set the projection matrix.
+        glMatrixMode(GL_PROJECTION)
+        intrinsics: Tuple[float, float, float, float] = (532.5694641250893, 531.5410880910171, 320.0, 240.0)
+        OpenGLUtil.set_projection_matrix(intrinsics, *window_size)
+
+        # Enable the z-buffer.
+        glEnable(GL_DEPTH_TEST)
+        glDepthFunc(GL_LESS)
+
+        # Construct the state machine for the drone.
+        state_machine: DroneFSM = DroneFSM(None, joystick)
+
+        # TODO: Comment here.
         while state_machine.alive():
-            state_machine.iterate(None, None)
+            pygame.display.set_caption(f"Mode: {int(state_machine.get_calibration_state())}")
+            takeoff_requested: bool = False
+            landing_requested: bool = False
+
+            # TODO: Comment here.
+            for event in pygame.event.get():
+                if event.type == pygame.JOYBUTTONDOWN:
+                    if event.button == 0:
+                        takeoff_requested = True
+                elif event.type == pygame.JOYBUTTONUP:
+                    if event.button == 0:
+                        landing_requested = True
+                elif event.type == pygame.QUIT:
+                    state_machine.terminate()
+
+            # TODO: Comment here.
+            if state_machine.alive():
+                state_machine.iterate(None, None, takeoff_requested, landing_requested)
+
+            # TODO: Comment here.
+            pygame.display.flip()
 
     # Shut down pygame cleanly.
     pygame.quit()

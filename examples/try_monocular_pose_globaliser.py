@@ -96,7 +96,7 @@ def main() -> None:
 
                     # Try to estimate a transformation from initial camera space to current camera space
                     # using the tracker.
-                    tracker_c_t_i: np.ndarray = tracker.estimate_pose(image)
+                    tracker_c_t_i: Optional[np.ndarray] = tracker.estimate_pose(image)
 
                     # If this fails, continue.
                     if tracker_c_t_i is None:

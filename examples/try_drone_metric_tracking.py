@@ -40,7 +40,7 @@ class DroneFSM:
         self.__drone: Drone = drone
         self.__joystick: FutabaT6K = joystick
         self.__landing_event: Event = Event()
-        self.__pose_globaliser: MonocularPoseGlobaliser = MonocularPoseGlobaliser()
+        self.__pose_globaliser: MonocularPoseGlobaliser = MonocularPoseGlobaliser(debug=True)
         self.__relocaliser_w_t_c_for_training: Optional[np.ndarray] = None
         self.__takeoff_event: Event = Event()
         self.__throttle_down_event: Event = Event()
@@ -132,6 +132,9 @@ class DroneFSM:
         if tracker_i_t_c is not None:
             # TODO
             tracker_w_t_c:  np.ndarray = self.__pose_globaliser.apply(tracker_i_t_c)
+
+            print("Tracker Pose:")
+            print(tracker_w_t_c)
 
             # TODO
             if self.__throttle_up_event.is_set():
@@ -253,11 +256,7 @@ def main() -> None:
         # TODO: Prompt the user for the joystick to use.
         pass
 
-    # Construct and calibrate the Futaba T6K.
-    joystick: FutabaT6K = FutabaT6K(joystick_idx)
-    joystick.calibrate()
-
-    # Use the Futaba T6K to control a drone.
+    # TODO: Comment here.
     kwargs: Dict[str, dict] = {
         "ardrone2": dict(print_commands=True, print_control_messages=True, print_navdata_messages=False),
         "tello": dict(print_commands=False, print_responses=False, print_state_messages=False)
@@ -270,6 +269,10 @@ def main() -> None:
                 settings_file=f"settings-{drone_type}.yaml", use_viewer=True,
                 voc_file="C:/orbslam2/Vocabulary/ORBvoc.txt", wait_till_ready=False
         ) as tracker:
+            # Construct and calibrate the Futaba T6K.
+            joystick: FutabaT6K = FutabaT6K(joystick_idx)
+            joystick.calibrate()
+
             # Create the window.
             window_size: Tuple[int, int] = (640, 480)
             pygame.display.set_mode(window_size, pygame.DOUBLEBUF | pygame.OPENGL)

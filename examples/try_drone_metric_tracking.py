@@ -24,7 +24,7 @@ class EDroneCalibrationState(int):
 
 
 DCS_UNCALIBRATED: EDroneCalibrationState = 0
-DCS_STARTING_TRAINING: EDroneCalibrationState = 1
+DCS_SETTING_REFERENCE: EDroneCalibrationState = 1
 DCS_LANDING_TO_TRAIN: EDroneCalibrationState = 2
 DCS_TRAINING: EDroneCalibrationState = 3
 DCS_CALIBRATED: EDroneCalibrationState = 4
@@ -41,6 +41,7 @@ class DroneFSM:
         self.__joystick: FutabaT6K = joystick
         self.__landing_event: Event = Event()
         self.__pose_globaliser: MonocularPoseGlobaliser = MonocularPoseGlobaliser()
+        self.__relocaliser_w_t_c_for_training: Optional[np.ndarray] = None
         self.__takeoff_event: Event = Event()
         self.__throttle_down_event: Event = Event()
         self.__throttle_prev: Optional[float] = None
@@ -90,14 +91,14 @@ class DroneFSM:
         # TODO: Comment here.
         if self.__calibration_state == DCS_UNCALIBRATED:
             self.__iterate_uncalibrated()
-        elif self.__calibration_state == DCS_STARTING_TRAINING:
-            self.__iterate_starting_training(tracker_i_t_c, relocaliser_w_t_c)
+        elif self.__calibration_state == DCS_SETTING_REFERENCE:
+            self.__iterate_setting_reference(tracker_i_t_c, relocaliser_w_t_c)
         elif self.__calibration_state == DCS_LANDING_TO_TRAIN:
             self.__iterate_landing_to_train()
         elif self.__calibration_state == DCS_TRAINING:
-            self.__iterate_training(tracker_i_t_c, relocaliser_w_t_c)
+            self.__iterate_training(tracker_i_t_c)
         elif self.__calibration_state == DCS_CALIBRATED:
-            self.__iterate_calibrated(tracker_i_t_c, relocaliser_w_t_c)
+            self.__iterate_calibrated(tracker_i_t_c)
 
         # TODO: Comment here.
         self.__throttle_prev = throttle
@@ -113,7 +114,7 @@ class DroneFSM:
 
     # PRIVATE METHODS
 
-    def __iterate_calibrated(self, tracker_i_t_c: Optional[np.ndarray], relocaliser_w_t_c: Optional[np.ndarray]) \
+    def __iterate_calibrated(self, tracker_i_t_c: Optional[np.ndarray]) \
             -> None:
         """
         TODO
@@ -121,13 +122,11 @@ class DroneFSM:
         .. note::
             TODO: Throttle starts down (no fixed height), can then be down or up (fixed height)
 
-        :param tracker_i_t_c:       TODO
-        :param relocaliser_w_t_c:   TODO
+        :param tracker_i_t_c:   TODO
         """
         # TODO
         if self.__throttle_down_event.is_set():
-            # TODO
-            pass
+            self.__pose_globaliser.clear_fixed_height()
 
         # TODO
         if tracker_i_t_c is not None:
@@ -148,28 +147,24 @@ class DroneFSM:
         """
         # If the user has told the drone to take off, return to the previous calibration step.
         if self.__takeoff_event.is_set():
-            self.__calibration_state = DCS_STARTING_TRAINING
+            self.__calibration_state = DCS_SETTING_REFERENCE
 
         # If the user has throttled down, move on to the next calibration step.
         if self.__throttle_down_event.is_set():
             self.__calibration_state = DCS_TRAINING
 
-    def __iterate_training(self, tracker_i_t_c: Optional[np.ndarray], relocaliser_w_t_c: Optional[np.ndarray]) \
-            -> None:
+    def __iterate_training(self, tracker_i_t_c: Optional[np.ndarray]) -> None:
         """
         TODO
 
         .. note::
             TODO: Throttle is down; on ground; takeoff -> C4; throttle up -> C2
 
-        :param tracker_i_t_c:       TODO
-        :param relocaliser_w_t_c:   TODO
+        :param tracker_i_t_c:   TODO
         """
         # Train the pose globaliser if possible.
-        # FIXME: The relocaliser pose won't be available at this point - we should make it artificially from the
-        #        last known relocaliser pose and the fact that we're now on the ground.
-        if tracker_i_t_c is not None and relocaliser_w_t_c is not None:
-            self.__pose_globaliser.train(tracker_i_t_c, relocaliser_w_t_c)
+        if tracker_i_t_c is not None and self.__relocaliser_w_t_c_for_training is not None:
+            self.__pose_globaliser.train(tracker_i_t_c, self.__relocaliser_w_t_c_for_training)
 
         # If the user has told the drone to take off, complete the calibration process.
         if self.__takeoff_event.is_set():
@@ -179,7 +174,7 @@ class DroneFSM:
         if self.__throttle_up_event.is_set():
             self.__calibration_state = DCS_LANDING_TO_TRAIN
 
-    def __iterate_starting_training(self, tracker_i_t_c: Optional[np.ndarray],
+    def __iterate_setting_reference(self, tracker_i_t_c: Optional[np.ndarray],
                                     relocaliser_w_t_c: Optional[np.ndarray]) -> None:
         """
         TODO
@@ -192,14 +187,20 @@ class DroneFSM:
         """
         # If the drone's successfully relocalised using the marker:
         if relocaliser_w_t_c is not None:
-            # Start to train the pose globaliser. Note that this can safely be called repeatedly: this has the effect
-            # of using the poses from the most recent call to define the reference space for the globaliser.
-            self.__pose_globaliser.start_training(tracker_i_t_c, relocaliser_w_t_c)
+            # Set the pose globaliser's reference space to get it ready for training. Note that this can safely be
+            # called repeatedly (the poses from the most recent call will be used to define the reference space).
+            self.__pose_globaliser.set_reference_space(tracker_i_t_c, relocaliser_w_t_c)
 
-        # If the user has told the drone to land and the globaliser's now training, move on to the next calibration
-        # step. Otherwise, stay on this step, and wait for the user to take off and try again.
-        if self.__landing_event.is_set() and self.__pose_globaliser.get_state() == MonocularPoseGlobaliser.TRAINING:
-            self.__calibration_state = DCS_LANDING_TO_TRAIN
+            # If the user has told the drone to land, move on to the next calibration step. Otherwise, stay on this
+            # step, and wait for the user to take off and try again.
+            if self.__landing_event.is_set():
+                self.__calibration_state = DCS_LANDING_TO_TRAIN
+
+                # It's unlikely that we'll be able to see the ArUco marker to relocalise once we're on the ground,
+                # so estimate the relocaliser pose we'll have at that point by using the pose currently output by
+                # the relocaliser and the fact that we'll be on the ground (i.e. y = 0) then.
+                self.__relocaliser_w_t_c_for_training = relocaliser_w_t_c.copy()
+                self.__relocaliser_w_t_c_for_training[1, 3] = 0.0
 
         # If the user has throttled down, stop the calibration process.
         if self.__throttle_down_event.is_set():
@@ -214,7 +215,7 @@ class DroneFSM:
         """
         # If the user throttles up, start the calibration process.
         if self.__throttle_up_event.is_set():
-            self.__calibration_state = DCS_STARTING_TRAINING
+            self.__calibration_state = DCS_SETTING_REFERENCE
 
 
 def main() -> None:

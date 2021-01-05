@@ -6,17 +6,17 @@ os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame
 
 from argparse import ArgumentParser
-from OpenGL.GL import *
 from threading import Event
 from typing import Dict, Optional, Tuple
 
-from smg.opengl import OpenGLUtil
+from smg.opengl import OpenGLRenderer
 from smg.pyorbslam2 import MonocularTracker
 from smg.relocalisation import ArUcoPnPRelocaliser
 from smg.relocalisation.poseglobalisers import MonocularPoseGlobaliser
 from smg.rotory import DroneFactory
 from smg.rotory.drones import Drone
 from smg.rotory.joysticks import FutabaT6K
+from smg.utility import ImageUtil
 
 
 class EDroneCalibrationState(int):
@@ -25,7 +25,7 @@ class EDroneCalibrationState(int):
 
 DCS_UNCALIBRATED: EDroneCalibrationState = 0
 DCS_SETTING_REFERENCE: EDroneCalibrationState = 1
-DCS_LANDING_TO_TRAIN: EDroneCalibrationState = 2
+DCS_PREPARING_TO_TRAIN: EDroneCalibrationState = 2
 DCS_TRAINING: EDroneCalibrationState = 3
 DCS_CALIBRATED: EDroneCalibrationState = 4
 
@@ -93,8 +93,8 @@ class DroneFSM:
             self.__iterate_uncalibrated()
         elif self.__calibration_state == DCS_SETTING_REFERENCE:
             self.__iterate_setting_reference(tracker_i_t_c, relocaliser_w_t_c)
-        elif self.__calibration_state == DCS_LANDING_TO_TRAIN:
-            self.__iterate_landing_to_train()
+        elif self.__calibration_state == DCS_PREPARING_TO_TRAIN:
+            self.__iterate_preparing_to_train()
         elif self.__calibration_state == DCS_TRAINING:
             self.__iterate_training(tracker_i_t_c)
         elif self.__calibration_state == DCS_CALIBRATED:
@@ -144,7 +144,7 @@ class DroneFSM:
             if self.__throttle_up_event.is_set():
                 self.__pose_globaliser.set_fixed_height(tracker_w_t_c)
 
-    def __iterate_landing_to_train(self) \
+    def __iterate_preparing_to_train(self) \
             -> None:
         """
         TODO
@@ -159,27 +159,6 @@ class DroneFSM:
         # If the user has throttled down, move on to the next calibration step.
         if self.__throttle_down_event.is_set():
             self.__calibration_state = DCS_TRAINING
-
-    def __iterate_training(self, tracker_i_t_c: Optional[np.ndarray]) -> None:
-        """
-        TODO
-
-        .. note::
-            TODO: Throttle is down; on ground; takeoff -> C4; throttle up -> C2
-
-        :param tracker_i_t_c:   TODO
-        """
-        # Train the pose globaliser if possible.
-        if tracker_i_t_c is not None and self.__relocaliser_w_t_c_for_training is not None:
-            self.__pose_globaliser.train(tracker_i_t_c, self.__relocaliser_w_t_c_for_training)
-
-        # If the user has told the drone to take off, complete the calibration process.
-        if self.__takeoff_event.is_set():
-            self.__calibration_state = DCS_CALIBRATED
-
-        # If the user has throttled up, return to the previous calibration step.
-        if self.__throttle_up_event.is_set():
-            self.__calibration_state = DCS_LANDING_TO_TRAIN
 
     def __iterate_setting_reference(self, tracker_i_t_c: Optional[np.ndarray],
                                     relocaliser_w_t_c: Optional[np.ndarray]) -> None:
@@ -201,7 +180,7 @@ class DroneFSM:
             # If the user has told the drone to land, move on to the next calibration step. Otherwise, stay on this
             # step, and wait for the user to take off and try again.
             if self.__landing_event.is_set():
-                self.__calibration_state = DCS_LANDING_TO_TRAIN
+                self.__calibration_state = DCS_PREPARING_TO_TRAIN
 
                 # It's unlikely that we'll be able to see the ArUco marker to relocalise once we're on the ground,
                 # so estimate the relocaliser pose we'll have at that point by using the pose currently output by
@@ -212,6 +191,27 @@ class DroneFSM:
         # If the user has throttled down, stop the calibration process.
         if self.__throttle_down_event.is_set():
             self.__calibration_state = DCS_UNCALIBRATED
+
+    def __iterate_training(self, tracker_i_t_c: Optional[np.ndarray]) -> None:
+        """
+        TODO
+
+        .. note::
+            TODO: Throttle is down; on ground; takeoff -> C4; throttle up -> C2
+
+        :param tracker_i_t_c:   TODO
+        """
+        # Train the pose globaliser if possible.
+        if tracker_i_t_c is not None and self.__relocaliser_w_t_c_for_training is not None:
+            self.__pose_globaliser.train(tracker_i_t_c, self.__relocaliser_w_t_c_for_training)
+
+        # If the user has told the drone to take off, complete the calibration process.
+        if self.__takeoff_event.is_set():
+            self.__calibration_state = DCS_CALIBRATED
+
+        # If the user has throttled up, return to the previous calibration step.
+        if self.__throttle_up_event.is_set():
+            self.__calibration_state = DCS_PREPARING_TO_TRAIN
 
     def __iterate_uncalibrated(self) -> None:
         """
@@ -269,72 +269,72 @@ def main() -> None:
     drone_type: str = args.get("drone_type")
 
     with DroneFactory.make_drone(drone_type, **kwargs[drone_type]) as drone:
-        with MonocularTracker(
-                settings_file=f"settings-{drone_type}.yaml", use_viewer=True,
-                voc_file="C:/orbslam2/Vocabulary/ORBvoc.txt", wait_till_ready=False
-        ) as tracker:
-            # Construct and calibrate the Futaba T6K.
-            joystick: FutabaT6K = FutabaT6K(joystick_idx)
-            joystick.calibrate()
+        # Create the window.
+        window_size: Tuple[int, int] = (640, 480)
+        pygame.display.set_mode(window_size, pygame.DOUBLEBUF | pygame.OPENGL)
 
-            # Create the window.
-            window_size: Tuple[int, int] = (640, 480)
-            pygame.display.set_mode(window_size, pygame.DOUBLEBUF | pygame.OPENGL)
+        with OpenGLRenderer() as renderer:
+            with MonocularTracker(
+                    settings_file=f"settings-{drone_type}.yaml", use_viewer=True,
+                    voc_file="C:/orbslam2/Vocabulary/ORBvoc.txt", wait_till_ready=False
+            ) as tracker:
+                # Construct and calibrate the Futaba T6K.
+                joystick: FutabaT6K = FutabaT6K(joystick_idx)
+                joystick.calibrate()
 
-            # # Set the projection matrix.
-            # glMatrixMode(GL_PROJECTION)
-            # intrinsics: Tuple[float, float, float, float] = (532.5694641250893, 531.5410880910171, 320.0, 240.0)
-            # OpenGLUtil.set_projection_matrix(intrinsics, *window_size)
-            #
-            # # Enable the z-buffer.
-            # glEnable(GL_DEPTH_TEST)
-            # glDepthFunc(GL_LESS)
+                # # Set the projection matrix.
+                # glMatrixMode(GL_PROJECTION)
+                # intrinsics: Tuple[float, float, float, float] = (532.5694641250893, 531.5410880910171, 320.0, 240.0)
+                # OpenGLUtil.set_projection_matrix(intrinsics, *window_size)
+                #
+                # # Enable the z-buffer.
+                # glEnable(GL_DEPTH_TEST)
+                # glDepthFunc(GL_LESS)
 
-            # Construct the state machine for the drone.
-            state_machine: DroneFSM = DroneFSM(drone, joystick)
-
-            # TODO: Comment here.
-            while state_machine.alive():
-                # TODO: Comment here.
-                takeoff_requested: bool = False
-                landing_requested: bool = False
-
-                for event in pygame.event.get():
-                    if event.type == pygame.JOYBUTTONDOWN:
-                        if event.button == 0:
-                            takeoff_requested = True
-                    elif event.type == pygame.JOYBUTTONUP:
-                        if event.button == 0:
-                            landing_requested = True
-                    elif event.type == pygame.QUIT:
-                        state_machine.terminate()
-
-                if not state_machine.alive():
-                    continue
-
-                # Get an image from the drone.
-                image: np.ndarray = drone.get_image()
-
-                # Try to estimate a transformation from initial camera space to current camera space
-                # using the tracker.
-                tracker_c_t_i: Optional[np.ndarray] = tracker.estimate_pose(image) if tracker.is_ready() else None
-
-                # Try to estimate a transformation from current camera space to world space using the relocaliser.
-                relocaliser_w_t_c: Optional[np.ndarray] = relocaliser.estimate_pose(image, drone.get_intrinsics())
+                # Construct the state machine for the drone.
+                state_machine: DroneFSM = DroneFSM(drone, joystick)
 
                 # TODO: Comment here.
-                state_machine.iterate(tracker_c_t_i, relocaliser_w_t_c, takeoff_requested, landing_requested)
+                while state_machine.alive():
+                    # TODO: Comment here.
+                    takeoff_requested: bool = False
+                    landing_requested: bool = False
 
-                # TODO: Comment here.
-                cv2.imshow("Image", image)
-                cv2.waitKey(1)
+                    for event in pygame.event.get():
+                        if event.type == pygame.JOYBUTTONDOWN:
+                            if event.button == 0:
+                                takeoff_requested = True
+                        elif event.type == pygame.JOYBUTTONUP:
+                            if event.button == 0:
+                                landing_requested = True
+                        elif event.type == pygame.QUIT:
+                            state_machine.terminate()
 
-                # TODO: Comment here.
-                pygame.display.set_caption(
-                    f"Calibration State: {int(state_machine.get_calibration_state())}; "
-                    f"Battery Level: {drone.get_battery_level()}"
-                )
-                pygame.display.flip()
+                    if not state_machine.alive():
+                        continue
+
+                    # Get an image from the drone.
+                    image: np.ndarray = drone.get_image()
+
+                    # Try to estimate a transformation from initial camera space to current camera space
+                    # using the tracker.
+                    tracker_c_t_i: Optional[np.ndarray] = tracker.estimate_pose(image) if tracker.is_ready() else None
+
+                    # Try to estimate a transformation from current camera space to world space using the relocaliser.
+                    relocaliser_w_t_c: Optional[np.ndarray] = relocaliser.estimate_pose(image, drone.get_intrinsics())
+
+                    # TODO: Comment here.
+                    state_machine.iterate(tracker_c_t_i, relocaliser_w_t_c, takeoff_requested, landing_requested)
+
+                    # TODO: Comment here.
+                    renderer.render_image(ImageUtil.flip_channels(image))
+
+                    # TODO: Comment here.
+                    pygame.display.set_caption(
+                        f"Calibration State: {int(state_machine.get_calibration_state())}; "
+                        f"Battery Level: {drone.get_battery_level()}"
+                    )
+                    pygame.display.flip()
 
     # Shut down pygame cleanly.
     pygame.quit()

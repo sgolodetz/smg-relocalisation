@@ -7,13 +7,15 @@ import pygame
 from argparse import ArgumentParser
 from OpenGL.GL import *
 from threading import Event
+from timeit import default_timer as timer
 from typing import Dict, Optional, Tuple
 
-from smg.opengl import OpenGLRenderer, OpenGLUtil
+from smg.opengl import OpenGLImageRenderer, OpenGLMatrixContext, OpenGLUtil
 from smg.pyorbslam2 import MonocularTracker
 from smg.relocalisation import ArUcoPnPRelocaliser
 from smg.relocalisation.poseglobalisers import MonocularPoseGlobaliser
 from smg.rigging.cameras import SimpleCamera
+from smg.rigging.controllers import KeyboardCameraController
 from smg.rigging.helpers import CameraPoseConverter, CameraRenderer
 from smg.rotory import DroneFactory
 from smg.rotory.drones import Drone
@@ -227,7 +229,8 @@ class DroneFSM:
             self.__calibration_state = DCS_SETTING_REFERENCE
 
 
-def render_window(*, drone_image: np.ndarray, renderer: OpenGLRenderer, window_size: Tuple[int, int]) -> None:
+def render_window(*, drone_image: np.ndarray, image_renderer: OpenGLImageRenderer, pose: np.ndarray,
+                  window_size: Tuple[int, int]) -> None:
     # Clear the window.
     OpenGLUtil.set_viewport((0.0, 0.0), (1.0, 1.0), window_size)
     glClearColor(1.0, 1.0, 1.0, 0.0)
@@ -235,30 +238,20 @@ def render_window(*, drone_image: np.ndarray, renderer: OpenGLRenderer, window_s
 
     # Render the drone image.
     OpenGLUtil.set_viewport((0.0, 0.0), (0.5, 1.0), window_size)
-    renderer.render_image(ImageUtil.flip_channels(drone_image))
+    image_renderer.render_image(ImageUtil.flip_channels(drone_image))
 
     # TODO: Render the metric trajectory of the drone in 3D.
     OpenGLUtil.set_viewport((0.5, 0.0), (1.0, 1.0), window_size)
 
     glDepthFunc(GL_LEQUAL)
-    # glEnable(GL_DEPTH_TEST)
+    glEnable(GL_DEPTH_TEST)
 
-    glMatrixMode(GL_PROJECTION)
-    glPushMatrix()
-    OpenGLUtil.set_projection_matrix((500.0, 500.0, 320.0, 240.0), 640, 480)
-
-    glMatrixMode(GL_MODELVIEW)
-    glPushMatrix()
-    cam: SimpleCamera = SimpleCamera([0, 0, 0], [0, 0, 1], [0, -1, 0])
-    other_cam: SimpleCamera = SimpleCamera([1, 0, 5], [0, 0, 1], [0, -1, 0])
-    glLoadMatrixf(CameraPoseConverter.pose_to_modelview(CameraPoseConverter.camera_to_pose(cam)).flatten(order='F'))
-    CameraRenderer.render_camera(other_cam, body_colour=(1.0, 1.0, 0.0), body_scale=0.1)
-
-    glMatrixMode(GL_MODELVIEW)
-    glPopMatrix()
-
-    glMatrixMode(GL_PROJECTION)
-    glPopMatrix()
+    with OpenGLMatrixContext(
+            GL_PROJECTION, lambda: OpenGLUtil.set_projection_matrix((500.0, 500.0, 320.0, 240.0), 640, 480)):
+        with OpenGLMatrixContext(
+                GL_MODELVIEW, lambda: glLoadMatrixf(CameraPoseConverter.pose_to_modelview(pose).flatten(order='F'))):
+            other_cam: SimpleCamera = SimpleCamera([1, 0, 5], [0, 0, 1], [0, -1, 0])
+            CameraRenderer.render_camera(other_cam, body_colour=(1.0, 1.0, 0.0), body_scale=0.1)
 
     glDisable(GL_DEPTH_TEST)
 
@@ -314,8 +307,13 @@ def main() -> None:
         window_size: Tuple[int, int] = (1280, 480)
         pygame.display.set_mode(window_size, pygame.DOUBLEBUF | pygame.OPENGL)
 
-        # Construct the renderer.
-        with OpenGLRenderer() as renderer:
+        # Construct the camera controller.
+        camera_controller: KeyboardCameraController = KeyboardCameraController(
+            SimpleCamera([0, 0, 0], [0, 0, 1], [0, -1, 0]), canonical_angular_speed=0.05, canonical_linear_speed=0.1
+        )
+
+        # Construct the image renderer.
+        with OpenGLImageRenderer() as image_renderer:
             # Construct the tracker.
             with MonocularTracker(
                 settings_file=f"settings-{drone_type}.yaml", use_viewer=True,
@@ -348,6 +346,9 @@ def main() -> None:
                     if not state_machine.alive():
                         continue
 
+                    # Allow the user to control the camera.
+                    camera_controller.update(pygame.key.get_pressed(), timer() * 1000)
+
                     # Get an image from the drone.
                     image: np.ndarray = drone.get_image()
 
@@ -370,7 +371,8 @@ def main() -> None:
                     # Render the contents of the window.
                     render_window(
                         drone_image=image,
-                        renderer=renderer,
+                        image_renderer=image_renderer,
+                        pose=camera_controller.get_pose(),
                         window_size=window_size
                     )
 

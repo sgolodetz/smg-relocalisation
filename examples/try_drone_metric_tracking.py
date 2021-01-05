@@ -98,7 +98,7 @@ class DroneFSM:
         elif self.__calibration_state == DCS_TRAINING:
             self.__iterate_training(tracker_i_t_c)
         elif self.__calibration_state == DCS_CALIBRATED:
-            self.__iterate_calibrated(tracker_i_t_c)
+            self.__iterate_calibrated(tracker_i_t_c, relocaliser_w_t_c)
 
         # TODO: Comment here.
         self.__throttle_prev = throttle
@@ -114,7 +114,7 @@ class DroneFSM:
 
     # PRIVATE METHODS
 
-    def __iterate_calibrated(self, tracker_i_t_c: Optional[np.ndarray]) \
+    def __iterate_calibrated(self, tracker_i_t_c: Optional[np.ndarray], relocaliser_w_t_c: Optional[np.ndarray]) \
             -> None:
         """
         TODO
@@ -135,6 +135,10 @@ class DroneFSM:
 
             print("Tracker Pose:")
             print(tracker_w_t_c)
+
+            if relocaliser_w_t_c is not None:
+                print("Relocaliser Pose:")
+                print(relocaliser_w_t_c)
 
             # TODO
             if self.__throttle_up_event.is_set():

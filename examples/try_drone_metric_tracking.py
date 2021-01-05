@@ -1,4 +1,3 @@
-import cv2
 import numpy as np
 import os
 
@@ -6,10 +5,11 @@ os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame
 
 from argparse import ArgumentParser
+from OpenGL.GL import *
 from threading import Event
 from typing import Dict, Optional, Tuple
 
-from smg.opengl import OpenGLRenderer
+from smg.opengl import OpenGLRenderer, OpenGLUtil
 from smg.pyorbslam2 import MonocularTracker
 from smg.relocalisation import ArUcoPnPRelocaliser
 from smg.relocalisation.poseglobalisers import MonocularPoseGlobaliser
@@ -260,9 +260,9 @@ def main() -> None:
         # TODO: Prompt the user for the joystick to use.
         pass
 
-    # TODO: Comment here.
+    # Construct the drone.
     kwargs: Dict[str, dict] = {
-        "ardrone2": dict(print_commands=True, print_control_messages=True, print_navdata_messages=False),
+        "ardrone2": dict(print_commands=False, print_control_messages=False, print_navdata_messages=False),
         "tello": dict(print_commands=False, print_responses=False, print_state_messages=False)
     }
 
@@ -270,33 +270,26 @@ def main() -> None:
 
     with DroneFactory.make_drone(drone_type, **kwargs[drone_type]) as drone:
         # Create the window.
-        window_size: Tuple[int, int] = (640, 480)
+        window_size: Tuple[int, int] = (1280, 480)
         pygame.display.set_mode(window_size, pygame.DOUBLEBUF | pygame.OPENGL)
 
+        # Construct the renderer.
         with OpenGLRenderer() as renderer:
+            # Construct the tracker.
             with MonocularTracker(
-                    settings_file=f"settings-{drone_type}.yaml", use_viewer=True,
-                    voc_file="C:/orbslam2/Vocabulary/ORBvoc.txt", wait_till_ready=False
+                settings_file=f"settings-{drone_type}.yaml", use_viewer=True,
+                voc_file="C:/orbslam2/Vocabulary/ORBvoc.txt", wait_till_ready=False
             ) as tracker:
                 # Construct and calibrate the Futaba T6K.
                 joystick: FutabaT6K = FutabaT6K(joystick_idx)
                 joystick.calibrate()
 
-                # # Set the projection matrix.
-                # glMatrixMode(GL_PROJECTION)
-                # intrinsics: Tuple[float, float, float, float] = (532.5694641250893, 531.5410880910171, 320.0, 240.0)
-                # OpenGLUtil.set_projection_matrix(intrinsics, *window_size)
-                #
-                # # Enable the z-buffer.
-                # glEnable(GL_DEPTH_TEST)
-                # glDepthFunc(GL_LESS)
-
                 # Construct the state machine for the drone.
                 state_machine: DroneFSM = DroneFSM(drone, joystick)
 
-                # TODO: Comment here.
+                # While the state machine is still running:
                 while state_machine.alive():
-                    # TODO: Comment here.
+                    # Process any pygame events.
                     takeoff_requested: bool = False
                     landing_requested: bool = False
 
@@ -310,6 +303,7 @@ def main() -> None:
                         elif event.type == pygame.QUIT:
                             state_machine.terminate()
 
+                    # If the user closed the application and the state machine terminated, early out.
                     if not state_machine.alive():
                         continue
 
@@ -323,17 +317,25 @@ def main() -> None:
                     # Try to estimate a transformation from current camera space to world space using the relocaliser.
                     relocaliser_w_t_c: Optional[np.ndarray] = relocaliser.estimate_pose(image, drone.get_intrinsics())
 
-                    # TODO: Comment here.
+                    # Run an iteration of the state machine.
                     state_machine.iterate(tracker_c_t_i, relocaliser_w_t_c, takeoff_requested, landing_requested)
 
-                    # TODO: Comment here.
+                    # Render the image from the drone.
+                    OpenGLUtil.set_viewport((0.0, 0.0), (0.5, 1.0), window_size)
                     renderer.render_image(ImageUtil.flip_channels(image))
 
-                    # TODO: Comment here.
+                    # TODO: Render the metric trajectory of the drone in 3D.
+                    OpenGLUtil.set_viewport((0.5, 0.0), (1.0, 1.0), window_size)
+                    glClearColor(1.0, 0.0, 0.0, 0.0)
+                    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+
+                    # Update the caption of the window to reflect the current state.
                     pygame.display.set_caption(
                         f"Calibration State: {int(state_machine.get_calibration_state())}; "
                         f"Battery Level: {drone.get_battery_level()}"
                     )
+
+                    # Swap the buffers.
                     pygame.display.flip()
 
     # Shut down pygame cleanly.

@@ -17,6 +17,7 @@ setup(
     install_requires=[
         "numpy",
         "opencv-contrib-python==3.4.2.16",
+        "PyOpenGL",
         "vg"
     ],
     classifiers=[

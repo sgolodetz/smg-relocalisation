@@ -13,6 +13,8 @@ from smg.opengl import OpenGLRenderer, OpenGLUtil
 from smg.pyorbslam2 import MonocularTracker
 from smg.relocalisation import ArUcoPnPRelocaliser
 from smg.relocalisation.poseglobalisers import MonocularPoseGlobaliser
+from smg.rigging.cameras import SimpleCamera
+from smg.rigging.helpers import CameraPoseConverter, CameraRenderer
 from smg.rotory import DroneFactory
 from smg.rotory.drones import Drone
 from smg.rotory.joysticks import FutabaT6K
@@ -225,6 +227,45 @@ class DroneFSM:
             self.__calibration_state = DCS_SETTING_REFERENCE
 
 
+def render_window(*, drone_image: np.ndarray, renderer: OpenGLRenderer, window_size: Tuple[int, int]) -> None:
+    # Clear the window.
+    OpenGLUtil.set_viewport((0.0, 0.0), (1.0, 1.0), window_size)
+    glClearColor(1.0, 1.0, 1.0, 0.0)
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+
+    # Render the drone image.
+    OpenGLUtil.set_viewport((0.0, 0.0), (0.5, 1.0), window_size)
+    renderer.render_image(ImageUtil.flip_channels(drone_image))
+
+    # TODO: Render the metric trajectory of the drone in 3D.
+    OpenGLUtil.set_viewport((0.5, 0.0), (1.0, 1.0), window_size)
+
+    glDepthFunc(GL_LEQUAL)
+    # glEnable(GL_DEPTH_TEST)
+
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    OpenGLUtil.set_projection_matrix((500.0, 500.0, 320.0, 240.0), 640, 480)
+
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    cam: SimpleCamera = SimpleCamera([0, 0, 0], [0, 0, 1], [0, -1, 0])
+    other_cam: SimpleCamera = SimpleCamera([1, 0, 5], [0, 0, 1], [0, -1, 0])
+    glLoadMatrixf(CameraPoseConverter.pose_to_modelview(CameraPoseConverter.camera_to_pose(cam)).flatten(order='F'))
+    CameraRenderer.render_camera(other_cam, body_colour=(1.0, 1.0, 0.0), body_scale=0.1)
+
+    glMatrixMode(GL_MODELVIEW)
+    glPopMatrix()
+
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+
+    glDisable(GL_DEPTH_TEST)
+
+    # Swap the buffers.
+    pygame.display.flip()
+
+
 def main() -> None:
     # Parse any command-line arguments.
     parser = ArgumentParser()
@@ -320,23 +361,18 @@ def main() -> None:
                     # Run an iteration of the state machine.
                     state_machine.iterate(tracker_c_t_i, relocaliser_w_t_c, takeoff_requested, landing_requested)
 
-                    # Render the image from the drone.
-                    OpenGLUtil.set_viewport((0.0, 0.0), (0.5, 1.0), window_size)
-                    renderer.render_image(ImageUtil.flip_channels(image))
-
-                    # TODO: Render the metric trajectory of the drone in 3D.
-                    OpenGLUtil.set_viewport((0.5, 0.0), (1.0, 1.0), window_size)
-                    glClearColor(1.0, 0.0, 0.0, 0.0)
-                    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-
                     # Update the caption of the window to reflect the current state.
                     pygame.display.set_caption(
                         f"Calibration State: {int(state_machine.get_calibration_state())}; "
                         f"Battery Level: {drone.get_battery_level()}"
                     )
 
-                    # Swap the buffers.
-                    pygame.display.flip()
+                    # Render the contents of the window.
+                    render_window(
+                        drone_image=image,
+                        renderer=renderer,
+                        window_size=window_size
+                    )
 
     # Shut down pygame cleanly.
     pygame.quit()

@@ -24,13 +24,19 @@ from smg.utility import ImageUtil, TrajectoryUtil
 
 
 class EDroneCalibrationState(int):
+    """The different calibration states in which a drone can be."""
     pass
 
 
+# Fly around as normal with non-metric tracking.
 DCS_UNCALIBRATED: EDroneCalibrationState = 0
+# Fly around in front of the marker to set the reference space.
 DCS_SETTING_REFERENCE: EDroneCalibrationState = 1
+# Land prior to training the globaliser to estimate the scale.
 DCS_PREPARING_TO_TRAIN: EDroneCalibrationState = 2
+# Whilst on the ground, train the globaliser to estimate the scale.
 DCS_TRAINING: EDroneCalibrationState = 3
+# Fly around as normal with metric tracking.
 DCS_CALIBRATED: EDroneCalibrationState = 4
 
 
@@ -159,8 +165,8 @@ class DroneFSM:
 
     # PRIVATE METHODS
 
-    def __iterate_calibrated(self, tracker_i_t_c: Optional[np.ndarray], relocaliser_w_t_c: Optional[np.ndarray]) \
-            -> None:
+    def __iterate_calibrated(self, tracker_i_t_c: Optional[np.ndarray],
+                             relocaliser_w_t_c: Optional[np.ndarray]) -> None:
         """
         Run an iteration of the 'calibrated' state.
 
@@ -202,13 +208,18 @@ class DroneFSM:
             print("Relocaliser Pose:")
             print(relocaliser_w_t_c)
 
-    def __iterate_preparing_to_train(self) \
-            -> None:
+    def __iterate_preparing_to_train(self) -> None:
         """
-        TODO
+        Run an iteration of the 'preparing to train' state.
 
         .. note::
-            TODO: Throttle is up; either landing or on ground; takeoff -> C1; throttle down -> C3
+            The drone enters this state either by landing after setting the globaliser's reference space,
+            or by throttling up after training the globaliser. It leaves this state either by throttling
+            down to enter the training state, or by taking off to enter the setting reference state. On
+            entering this state, the throttle will be up.
+        .. note::
+            In practice, this state exists to allow the drone to land prior to starting to train the
+            globaliser. The training process should only be started once the drone is on the ground.
         """
         # If the user has told the drone to take off, return to the previous calibration step.
         if self.__takeoff_event.is_set():
@@ -221,13 +232,15 @@ class DroneFSM:
     def __iterate_setting_reference(self, tracker_i_t_c: Optional[np.ndarray],
                                     relocaliser_w_t_c: Optional[np.ndarray]) -> None:
         """
-        TODO
+        Run an iteration of the 'setting reference' state.
 
         .. note::
             TODO: Throttle is up; flying; land -> C2; throttle down -> U
 
-        :param tracker_i_t_c:       TODO
-        :param relocaliser_w_t_c:   TODO
+        :param tracker_i_t_c:       A non-metric transformation from current camera space to initial camera space,
+                                    as estimated by the tracker.
+        :param relocaliser_w_t_c:   A metric transformation from current camera space to world space, as estimated
+                                    by the relocaliser.
         """
         # If the drone's successfully relocalised using the marker:
         if relocaliser_w_t_c is not None:
@@ -252,12 +265,13 @@ class DroneFSM:
 
     def __iterate_training(self, tracker_i_t_c: Optional[np.ndarray]) -> None:
         """
-        TODO
+        Run an iteration of the 'training' state.
 
         .. note::
             TODO: Throttle is down; on ground; takeoff -> C4; throttle up -> C2
 
-        :param tracker_i_t_c:   TODO
+        :param tracker_i_t_c:   A non-metric transformation from current camera space to initial camera space,
+                                as estimated by the tracker.
         """
         # Train the pose globaliser if possible.
         if tracker_i_t_c is not None and self.__relocaliser_w_t_c_for_training is not None:
@@ -273,10 +287,10 @@ class DroneFSM:
 
     def __iterate_uncalibrated(self) -> None:
         """
-        TODO
+        Run an iteration of the 'uncalibrated' state.
 
         .. note::
-            The drone can be doing anything at this point - no calibration happens until the user throttles up.
+            TODO: The drone can be doing anything at this point - no calibration happens until the user throttles up.
         """
         # If the user throttles up, start the calibration process.
         if self.__throttle_up_event.is_set():
@@ -287,6 +301,16 @@ def render_window(*, drone_image: np.ndarray, image_renderer: OpenGLImageRendere
                   relocaliser_trajectory: List[Tuple[float, np.ndarray]],
                   tracker_trajectory: List[Tuple[float, np.ndarray]],
                   viewing_pose: np.ndarray, window_size: Tuple[int, int]) -> None:
+    """
+    TODO
+
+    :param drone_image:             TODO
+    :param image_renderer:          TODO
+    :param relocaliser_trajectory:  TODO
+    :param tracker_trajectory:      TODO
+    :param viewing_pose:            TODO
+    :param window_size:             TODO
+    """
     # Clear the window.
     OpenGLUtil.set_viewport((0.0, 0.0), (1.0, 1.0), window_size)
     glClearColor(1.0, 1.0, 1.0, 0.0)
@@ -296,7 +320,7 @@ def render_window(*, drone_image: np.ndarray, image_renderer: OpenGLImageRendere
     OpenGLUtil.set_viewport((0.0, 0.0), (0.5, 1.0), window_size)
     image_renderer.render_image(ImageUtil.flip_channels(drone_image))
 
-    # TODO: Render the metric trajectory of the drone in 3D.
+    # Render the drone's trajectories in 3D.
     OpenGLUtil.set_viewport((0.5, 0.0), (1.0, 1.0), window_size)
 
     glDepthFunc(GL_LEQUAL)

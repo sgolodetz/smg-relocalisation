@@ -62,6 +62,10 @@ class DroneFSM:
 
     def iterate(self, tracker_c_t_i: Optional[np.ndarray], relocaliser_w_t_c: Optional[np.ndarray],
                 takeoff_requested: bool, landing_requested: bool) -> None:
+        if self.__joystick.get_button(0) == 0 and self.__joystick.get_button(1) == 0:
+            self.terminate()
+            return
+
         # TODO: Comment here.
         if takeoff_requested:
             # self.__drone.takeoff()
@@ -250,8 +254,11 @@ def render_window(*, drone_image: np.ndarray, image_renderer: OpenGLImageRendere
             GL_PROJECTION, lambda: OpenGLUtil.set_projection_matrix((500.0, 500.0, 320.0, 240.0), 640, 480)):
         with OpenGLMatrixContext(
                 GL_MODELVIEW, lambda: glLoadMatrixf(CameraPoseConverter.pose_to_modelview(pose).flatten(order='F'))):
-            other_cam: SimpleCamera = SimpleCamera([1, 0, 5], [0, 0, 1], [0, -1, 0])
-            CameraRenderer.render_camera(other_cam, body_colour=(1.0, 1.0, 0.0), body_scale=0.1)
+            glColor3f(0.0, 0.0, 0.0)
+            OpenGLUtil.render_voxel_grid([-2, -2, -2], [2, 0, 2], [1, 1, 1])
+
+            origin: SimpleCamera = SimpleCamera([0, 0, 0], [0, 0, 1], [0, -1, 0])
+            CameraRenderer.render_camera(origin, body_colour=(1.0, 1.0, 0.0), body_scale=0.1)
 
     glDisable(GL_DEPTH_TEST)
 
@@ -344,7 +351,7 @@ def main() -> None:
 
                     # If the user closed the application and the state machine terminated, early out.
                     if not state_machine.alive():
-                        continue
+                        break
 
                     # Allow the user to control the camera.
                     camera_controller.update(pygame.key.get_pressed(), timer() * 1000)
@@ -375,6 +382,12 @@ def main() -> None:
                         pose=camera_controller.get_pose(),
                         window_size=window_size
                     )
+
+                # If the tracker's not ready yet, forcibly terminate the whole process (this isn't graceful, but
+                # if we don't do it then we may have to wait a very long time for it to finish initialising).
+                if not tracker.is_ready():
+                    # noinspection PyProtectedMember
+                    os._exit(0)
 
     # Shut down pygame cleanly.
     pygame.quit()

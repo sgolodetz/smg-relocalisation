@@ -35,11 +35,17 @@ DCS_CALIBRATED: EDroneCalibrationState = 4
 
 
 class DroneFSM:
-    """TODO"""
+    """A finite state machine for a drone."""
 
     # CONSTRUCTOR
 
     def __init__(self, drone: Drone, joystick: FutabaT6K):
+        """
+        Construct a finite state machine for a drone.
+
+        :param drone:       The drone.
+        :param joystick:    The joystick that will be used to control the drone's movement.
+        """
         self.__calibration_state: EDroneCalibrationState = DCS_UNCALIBRATED
         self.__drone: Drone = drone
         self.__joystick: FutabaT6K = joystick
@@ -56,21 +62,47 @@ class DroneFSM:
     # PUBLIC METHODS
 
     def alive(self) -> bool:
+        """
+        Get whether or not the state machine is still alive.
+
+        :return:    True, if the state machine is still alive, or False otherwise.
+        """
         return not self.__should_terminate
 
     def get_calibration_state(self) -> EDroneCalibrationState:
+        """
+        Get the calibration state of the drone.
+
+        :return:    The calibration state of the drone.
+        """
         return self.__calibration_state
 
     def get_tracker_w_t_c(self) -> Optional[np.ndarray]:
+        """
+        Try to get a metric transformation from current camera space to world space, as estimated by the tracker.
+
+        .. note::
+            This returns None iff either (i) the tracker failed, or (ii) the drone hasn't been calibrated yet.
+
+        :return:    A metric transformation from current camera space to world space, as estimated by the tracker,
+                    if available, or None otherwise.
+        """
         return self.__tracker_w_t_c
 
     def iterate(self, tracker_c_t_i: Optional[np.ndarray], relocaliser_w_t_c: Optional[np.ndarray],
                 takeoff_requested: bool, landing_requested: bool) -> None:
-        if self.__joystick.get_button(0) == 0 and self.__joystick.get_button(1) == 0:
-            self.terminate()
-            return
+        """
+        Run an iteration of the state machine.
 
-        # TODO: Comment here.
+        :param tracker_c_t_i:       A non-metric transformation from initial camera space to current camera space,
+                                    as estimated by the tracker.
+        :param relocaliser_w_t_c:   A metric transformation from current camera space to world space, as estimated
+                                    by the relocaliser.
+        :param takeoff_requested:   Whether or not the user has asked for the drone to take off.
+        :param landing_requested:   Whether or not the user has asked for the drone to land.
+        """
+        # Process any take-off or landing requests, and set the corresponding events so that individual states
+        # can respond to them later if desired.
         if takeoff_requested:
             # self.__drone.takeoff()
             self.__takeoff_event.set()
@@ -78,7 +110,7 @@ class DroneFSM:
             # self.__drone.land()
             self.__landing_event.set()
 
-        # TODO: Comment here.
+        # Check for any throttle up/down events that have occurred so that individual states can respond to them later.
         throttle: float = self.__joystick.get_throttle()
         if self.__throttle_prev is not None:
             if throttle <= 0.25 < self.__throttle_prev:
@@ -97,10 +129,10 @@ class DroneFSM:
         #     self.__drone.move_right(self.__joystick.get_roll())
         #     self.__drone.move_up(0)
 
-        # TODO: Comment here.
+        # If the non-metric tracker pose is available, compute its inverse for later use.
         tracker_i_t_c: Optional[np.ndarray] = np.linalg.inv(tracker_c_t_i) if tracker_c_t_i is not None else None
 
-        # TODO: Comment here.
+        # Run an iteration of the current state.
         if self.__calibration_state == DCS_UNCALIBRATED:
             self.__iterate_uncalibrated()
         elif self.__calibration_state == DCS_SETTING_REFERENCE:
@@ -112,16 +144,17 @@ class DroneFSM:
         elif self.__calibration_state == DCS_CALIBRATED:
             self.__iterate_calibrated(tracker_i_t_c, relocaliser_w_t_c)
 
-        # TODO: Comment here.
+        # Record the current setting of the throttle for later, so we can detect throttle up/down events that occur.
         self.__throttle_prev = throttle
 
-        # TODO: Comment here.
+        # Clear any events that have occurred during this iteration of the state machine.
         self.__landing_event.clear()
         self.__takeoff_event.clear()
         self.__throttle_down_event.clear()
         self.__throttle_up_event.clear()
 
     def terminate(self) -> None:
+        """Tell the state machine to terminate."""
         self.__should_terminate = True
 
     # PRIVATE METHODS
@@ -129,31 +162,42 @@ class DroneFSM:
     def __iterate_calibrated(self, tracker_i_t_c: Optional[np.ndarray], relocaliser_w_t_c: Optional[np.ndarray]) \
             -> None:
         """
-        TODO
+        Run an iteration of the 'calibrated' state.
 
         .. note::
-            TODO: Throttle starts down (no fixed height), can then be down or up (fixed height)
+            The drone enters this state by taking off after training the globaliser. It then never leaves this state.
+            On entering this state, the throttle will be down (as it was during the training of the globaliser).
+            Moving the throttle up/down will then set/clear a fixed height.
 
-        :param tracker_i_t_c:   TODO
+        :param tracker_i_t_c:       A non-metric transformation from current camera space to initial camera space,
+                                    as estimated by the tracker.
+        :param relocaliser_w_t_c:   A metric transformation from current camera space to world space, as estimated
+                                    by the relocaliser.
         """
-        # TODO
+        # If the user throttles down, clear the fixed height.
         if self.__throttle_down_event.is_set():
             self.__pose_globaliser.clear_fixed_height()
 
-        # TODO
+        # If the non-metric tracker pose is available:
         if tracker_i_t_c is not None:
-            # TODO
+            # Use the globaliser to obtain the metric tracker pose.
             self.__tracker_w_t_c = self.__pose_globaliser.apply(tracker_i_t_c)
 
-            # TODO
+            # If the user throttles up, set the current height as the fixed height. Note that it is theoretically
+            # possible for the user to throttle up during a period of tracking failure. In that case, the throttle
+            # will be up but no fixed height will have been set. However, if that happens, the user can simply
+            # throttle down again with no ill effects (clearing a fixed height that hasn't been set is a no-op).
             if self.__throttle_up_event.is_set():
                 self.__pose_globaliser.set_fixed_height(self.__tracker_w_t_c)
         else:
+            # If the non-metric tracker pose isn't available, the metric tracker pose clearly can't be estimated.
             self.__tracker_w_t_c = None
 
+        # Print the tracker pose.
         print("Tracker Pose:")
         print(self.__tracker_w_t_c)
 
+        # If the relocaliser pose is available, also print that.
         if relocaliser_w_t_c is not None:
             print("Relocaliser Pose:")
             print(relocaliser_w_t_c)

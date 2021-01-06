@@ -89,6 +89,14 @@ class MonocularPoseGlobaliser:
 
         return tracker_w_t_c
 
+    def clear_fixed_height(self) -> None:
+        """Revoke the promise that the camera will stay at its current height."""
+        self.__fixed_height = None
+        self.__up = None
+
+        if self.__debug:
+            print("Clearing fixed height")
+
     def finish_training(self) -> None:
         """
         Finish training the globaliser.
@@ -116,7 +124,7 @@ class MonocularPoseGlobaliser:
 
     def set_fixed_height(self, tracker_w_t_c: np.ndarray, *, up: np.ndarray = np.array([0, -1, 0])) -> None:
         """
-        Promise that the camera will stay at its current height from here on out.
+        Promise that the camera will stay at its current height.
 
         .. note::
             This can be used to mitigate scale drift.
@@ -130,9 +138,9 @@ class MonocularPoseGlobaliser:
         if self.__debug:
             print(f"Setting fixed height to: {self.__fixed_height}")
 
-    def start_training(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray) -> None:
+    def set_reference_space(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray) -> None:
         """
-        Start training the globaliser.
+        Set the globaliser's reference space.
 
         :param tracker_i_t_c:       A non-metric transformation from current camera space to initial camera space,
                                     as estimated by the tracker.

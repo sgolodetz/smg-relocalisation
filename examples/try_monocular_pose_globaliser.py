@@ -96,7 +96,7 @@ def main() -> None:
 
                     # Try to estimate a transformation from initial camera space to current camera space
                     # using the tracker.
-                    tracker_c_t_i: np.ndarray = tracker.estimate_pose(image)
+                    tracker_c_t_i: Optional[np.ndarray] = tracker.estimate_pose(image)
 
                     # If this fails, continue.
                     if tracker_c_t_i is None:
@@ -147,9 +147,9 @@ def main() -> None:
                             pose_globaliser.finish_training()
                     elif state == MonocularPoseGlobaliser.UNTRAINED:
                         # If the pose globaliser's training hasn't started yet, the user presses 't' and the relocaliser
-                        # produced a pose for this frame, use the two current poses to start the training process.
+                        # produced a pose for this frame, use the two current poses to set the reference space.
                         if c == ord('t') and relocaliser_w_t_c is not None:
-                            pose_globaliser.start_training(tracker_i_t_c, relocaliser_w_t_c)
+                            pose_globaliser.set_reference_space(tracker_i_t_c, relocaliser_w_t_c)
             finally:
                 if relocaliser_trajectory_file is not None:
                     relocaliser_trajectory_file.close()

@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 from OpenGL.GL import *
 from threading import Event
 from timeit import default_timer as timer
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from smg.opengl import OpenGLImageRenderer, OpenGLMatrixContext, OpenGLUtil
 from smg.pyorbslam2 import MonocularTracker
@@ -20,7 +20,7 @@ from smg.rigging.helpers import CameraPoseConverter, CameraRenderer
 from smg.rotory import DroneFactory
 from smg.rotory.drones import Drone
 from smg.rotory.joysticks import FutabaT6K
-from smg.utility import ImageUtil
+from smg.utility import ImageUtil, TrajectoryUtil
 
 
 class EDroneCalibrationState(int):
@@ -50,6 +50,7 @@ class DroneFSM:
         self.__throttle_down_event: Event = Event()
         self.__throttle_prev: Optional[float] = None
         self.__throttle_up_event: Event = Event()
+        self.__tracker_w_t_c: Optional[np.ndarray] = None
         self.__should_terminate: bool = False
 
     # PUBLIC METHODS
@@ -59,6 +60,9 @@ class DroneFSM:
 
     def get_calibration_state(self) -> EDroneCalibrationState:
         return self.__calibration_state
+
+    def get_tracker_w_t_c(self) -> Optional[np.ndarray]:
+        return self.__tracker_w_t_c
 
     def iterate(self, tracker_c_t_i: Optional[np.ndarray], relocaliser_w_t_c: Optional[np.ndarray],
                 takeoff_requested: bool, landing_requested: bool) -> None:
@@ -139,18 +143,20 @@ class DroneFSM:
         # TODO
         if tracker_i_t_c is not None:
             # TODO
-            tracker_w_t_c:  np.ndarray = self.__pose_globaliser.apply(tracker_i_t_c)
-
-            print("Tracker Pose:")
-            print(tracker_w_t_c)
-
-            if relocaliser_w_t_c is not None:
-                print("Relocaliser Pose:")
-                print(relocaliser_w_t_c)
+            self.__tracker_w_t_c = self.__pose_globaliser.apply(tracker_i_t_c)
 
             # TODO
             if self.__throttle_up_event.is_set():
-                self.__pose_globaliser.set_fixed_height(tracker_w_t_c)
+                self.__pose_globaliser.set_fixed_height(self.__tracker_w_t_c)
+        else:
+            self.__tracker_w_t_c = None
+
+        print("Tracker Pose:")
+        print(self.__tracker_w_t_c)
+
+        if relocaliser_w_t_c is not None:
+            print("Relocaliser Pose:")
+            print(relocaliser_w_t_c)
 
     def __iterate_preparing_to_train(self) \
             -> None:
@@ -233,8 +239,10 @@ class DroneFSM:
             self.__calibration_state = DCS_SETTING_REFERENCE
 
 
-def render_window(*, drone_image: np.ndarray, image_renderer: OpenGLImageRenderer, pose: np.ndarray,
-                  window_size: Tuple[int, int]) -> None:
+def render_window(*, drone_image: np.ndarray, image_renderer: OpenGLImageRenderer,
+                  relocaliser_trajectory: List[Tuple[float, np.ndarray]],
+                  tracker_trajectory: List[Tuple[float, np.ndarray]],
+                  viewing_pose: np.ndarray, window_size: Tuple[int, int]) -> None:
     # Clear the window.
     OpenGLUtil.set_viewport((0.0, 0.0), (1.0, 1.0), window_size)
     glClearColor(1.0, 1.0, 1.0, 0.0)
@@ -251,14 +259,19 @@ def render_window(*, drone_image: np.ndarray, image_renderer: OpenGLImageRendere
     glEnable(GL_DEPTH_TEST)
 
     with OpenGLMatrixContext(
-            GL_PROJECTION, lambda: OpenGLUtil.set_projection_matrix((500.0, 500.0, 320.0, 240.0), 640, 480)):
+        GL_PROJECTION, lambda: OpenGLUtil.set_projection_matrix((500.0, 500.0, 320.0, 240.0), 640, 480)
+    ):
         with OpenGLMatrixContext(
-                GL_MODELVIEW, lambda: glLoadMatrixf(CameraPoseConverter.pose_to_modelview(pose).flatten(order='F'))):
+            GL_MODELVIEW, lambda: glLoadMatrixf(CameraPoseConverter.pose_to_modelview(viewing_pose).flatten(order='F'))
+        ):
             glColor3f(0.0, 0.0, 0.0)
             OpenGLUtil.render_voxel_grid([-2, -2, -2], [2, 0, 2], [1, 1, 1])
 
             origin: SimpleCamera = SimpleCamera([0, 0, 0], [0, 0, 1], [0, -1, 0])
             CameraRenderer.render_camera(origin, body_colour=(1.0, 1.0, 0.0), body_scale=0.1)
+
+            OpenGLUtil.render_trajectory(relocaliser_trajectory, colour=(0.0, 1.0, 0.0))
+            OpenGLUtil.render_trajectory(tracker_trajectory, colour=(0.0, 0.0, 1.0))
 
     glDisable(GL_DEPTH_TEST)
 
@@ -333,6 +346,11 @@ def main() -> None:
                 # Construct the state machine for the drone.
                 state_machine: DroneFSM = DroneFSM(drone, joystick)
 
+                # Initialise the timestamp and the drone's trajectories (used for visualisation).
+                timestamp: float = 0.0
+                relocaliser_trajectory: List[Tuple[float, np.ndarray]] = []
+                tracker_trajectory: List[Tuple[float, np.ndarray]] = []
+
                 # While the state machine is still running:
                 while state_machine.alive():
                     # Process any pygame events.
@@ -369,6 +387,13 @@ def main() -> None:
                     # Run an iteration of the state machine.
                     state_machine.iterate(tracker_c_t_i, relocaliser_w_t_c, takeoff_requested, landing_requested)
 
+                    # Update the drone's trajectories.
+                    tracker_w_t_c: Optional[np.ndarray] = state_machine.get_tracker_w_t_c()
+                    if tracker_w_t_c is not None:
+                        tracker_trajectory.append((timestamp, tracker_w_t_c))
+                        if relocaliser_w_t_c is not None:
+                            relocaliser_trajectory.append((timestamp, relocaliser_w_t_c))
+
                     # Update the caption of the window to reflect the current state.
                     pygame.display.set_caption(
                         f"Calibration State: {int(state_machine.get_calibration_state())}; "
@@ -379,9 +404,14 @@ def main() -> None:
                     render_window(
                         drone_image=image,
                         image_renderer=image_renderer,
-                        pose=camera_controller.get_pose(),
+                        relocaliser_trajectory=TrajectoryUtil.smooth_trajectory(relocaliser_trajectory),
+                        tracker_trajectory=tracker_trajectory,
+                        viewing_pose=camera_controller.get_pose(),
                         window_size=window_size
                     )
+
+                    # Update the timestamp.
+                    timestamp += 1.0
 
                 # If the tracker's not ready yet, forcibly terminate the whole process (this isn't graceful, but
                 # if we don't do it then we may have to wait a very long time for it to finish initialising).

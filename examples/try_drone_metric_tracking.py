@@ -215,8 +215,8 @@ class DroneFSM:
         .. note::
             The drone enters this state either by landing after setting the globaliser's reference space,
             or by throttling up after training the globaliser. It leaves this state either by throttling
-            down to enter the training state, or by taking off to enter the setting reference state. On
-            entering this state, the throttle will be up.
+            down to enter the training state, or by taking off to re-enter the setting reference state.
+            On entering this state, the throttle will be up.
         .. note::
             In practice, this state exists to allow the drone to land prior to starting to train the
             globaliser. The training process should only be started once the drone is on the ground.
@@ -235,7 +235,13 @@ class DroneFSM:
         Run an iteration of the 'setting reference' state.
 
         .. note::
-            TODO: Throttle is up; flying; land -> C2; throttle down -> U
+            The drone enters this state either by throttling up from the uncalibrated state, or by taking off
+            again after preparing to train the globaliser. It leaves this state either by starting to land and
+            entering the preparing to train state, or by throttling down and re-entering the uncalibrated state.
+            On entering this state, the throttle will be up. To fulfil the objective of being in this state,
+            the drone must at some point fly in front of the marker so that the reference space can be set.
+            It can only land and continue with calibration from a point at which it can see the marker (to
+            ensure that the reference space has been set correctly).
 
         :param tracker_i_t_c:       A non-metric transformation from current camera space to initial camera space,
                                     as estimated by the tracker.
@@ -268,7 +274,10 @@ class DroneFSM:
         Run an iteration of the 'training' state.
 
         .. note::
-            TODO: Throttle is down; on ground; takeoff -> C4; throttle up -> C2
+            The drone enters this state by throttling down from the preparing to train state. It leaves this
+            state either by taking off to enter the calibrated state, or by throttling up again to return to
+            the preparing to train state. On entering this state, the throttle will be down. The drone will
+            be on the ground whilst in this state.
 
         :param tracker_i_t_c:   A non-metric transformation from current camera space to initial camera space,
                                 as estimated by the tracker.
@@ -290,7 +299,9 @@ class DroneFSM:
         Run an iteration of the 'uncalibrated' state.
 
         .. note::
-            TODO: The drone can be doing anything at this point - no calibration happens until the user throttles up.
+            The drone starts in this state. It leaves this state by throttling up to enter the
+            setting reference state. Whilst in this state, the drone can move around as normal,
+            but any poses estimated by the tracker will be non-metric.
         """
         # If the user throttles up, start the calibration process.
         if self.__throttle_up_event.is_set():

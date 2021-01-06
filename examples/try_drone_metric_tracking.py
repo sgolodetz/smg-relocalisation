@@ -313,14 +313,14 @@ def render_window(*, drone_image: np.ndarray, image_renderer: OpenGLImageRendere
                   tracker_trajectory: List[Tuple[float, np.ndarray]],
                   viewing_pose: np.ndarray, window_size: Tuple[int, int]) -> None:
     """
-    TODO
+    Render the application window.
 
-    :param drone_image:             TODO
-    :param image_renderer:          TODO
-    :param relocaliser_trajectory:  TODO
-    :param tracker_trajectory:      TODO
-    :param viewing_pose:            TODO
-    :param window_size:             TODO
+    :param drone_image:             The most recent image from the drone.
+    :param image_renderer:          An OpenGL-based image renderer.
+    :param relocaliser_trajectory:  The metric trajectory of the drone, as estimated by the marker-based relocaliser.
+    :param tracker_trajectory:      The metric trajectory of the drone, as estimated by the tracker.
+    :param viewing_pose:            The pose from which the scene is being viewed.
+    :param window_size:             The application window size, as a (width, height) tuple.
     """
     # Clear the window.
     OpenGLUtil.set_viewport((0.0, 0.0), (1.0, 1.0), window_size)
@@ -410,11 +410,6 @@ def main() -> None:
         window_size: Tuple[int, int] = (1280, 480)
         pygame.display.set_mode(window_size, pygame.DOUBLEBUF | pygame.OPENGL)
 
-        # Construct the camera controller.
-        camera_controller: KeyboardCameraController = KeyboardCameraController(
-            SimpleCamera([0, 0, 0], [0, 0, 1], [0, -1, 0]), canonical_angular_speed=0.05, canonical_linear_speed=0.1
-        )
-
         # Construct the image renderer.
         with OpenGLImageRenderer() as image_renderer:
             # Construct the tracker.
@@ -425,6 +420,12 @@ def main() -> None:
                 # Construct and calibrate the Futaba T6K.
                 joystick: FutabaT6K = FutabaT6K(joystick_idx)
                 joystick.calibrate()
+
+                # Construct the camera controller.
+                camera_controller: KeyboardCameraController = KeyboardCameraController(
+                    SimpleCamera([0, 0, 0], [0, 0, 1], [0, -1, 0]), canonical_angular_speed=0.05,
+                    canonical_linear_speed=0.1
+                )
 
                 # Construct the state machine for the drone.
                 state_machine: DroneFSM = DroneFSM(drone, joystick)

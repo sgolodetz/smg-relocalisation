@@ -20,7 +20,7 @@ from smg.rigging.helpers import CameraPoseConverter, CameraRenderer
 from smg.rotory import DroneFactory
 from smg.rotory.drones import Drone
 from smg.rotory.joysticks import FutabaT6K
-from smg.utility import ImageUtil, TrajectoryUtil
+from smg.utility import ImageUtil, TrajectorySmoother
 
 
 class EDroneCalibrationState(int):
@@ -430,10 +430,10 @@ def main() -> None:
                 # Construct the state machine for the drone.
                 state_machine: DroneFSM = DroneFSM(drone, joystick)
 
-                # Initialise the timestamp and the drone's trajectories (used for visualisation).
+                # Initialise the timestamp and the drone's trajectory smoothers (used for visualisation).
                 timestamp: float = 0.0
-                relocaliser_trajectory: List[Tuple[float, np.ndarray]] = []
-                tracker_trajectory: List[Tuple[float, np.ndarray]] = []
+                relocaliser_trajectory_smoother: TrajectorySmoother = TrajectorySmoother(neighbourhood_size=25)
+                tracker_trajectory_smoother: TrajectorySmoother = TrajectorySmoother()
 
                 # While the state machine is still running:
                 while state_machine.alive():
@@ -474,9 +474,9 @@ def main() -> None:
                     # Update the drone's trajectories.
                     tracker_w_t_c: Optional[np.ndarray] = state_machine.get_tracker_w_t_c()
                     if tracker_w_t_c is not None:
-                        tracker_trajectory.append((timestamp, tracker_w_t_c))
+                        tracker_trajectory_smoother.append(timestamp, tracker_w_t_c)
                         if relocaliser_w_t_c is not None:
-                            relocaliser_trajectory.append((timestamp, relocaliser_w_t_c))
+                            relocaliser_trajectory_smoother.append(timestamp, relocaliser_w_t_c)
 
                     # Update the caption of the window to reflect the current state.
                     pygame.display.set_caption(
@@ -488,8 +488,8 @@ def main() -> None:
                     render_window(
                         drone_image=image,
                         image_renderer=image_renderer,
-                        relocaliser_trajectory=TrajectoryUtil.smooth_trajectory(relocaliser_trajectory),
-                        tracker_trajectory=tracker_trajectory,
+                        relocaliser_trajectory=relocaliser_trajectory_smoother.get_smoothed_trajectory()[::10],
+                        tracker_trajectory=tracker_trajectory_smoother.get_smoothed_trajectory()[::10],
                         viewing_pose=camera_controller.get_pose(),
                         window_size=window_size
                     )

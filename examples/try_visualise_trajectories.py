@@ -4,7 +4,7 @@ import open3d as o3d
 from typing import List, Tuple
 
 from smg.open3d.visualisation_util import VisualisationUtil
-from smg.utility.trajectory_util import TrajectoryUtil
+from smg.utility import TrajectoryUtil
 
 
 def main():

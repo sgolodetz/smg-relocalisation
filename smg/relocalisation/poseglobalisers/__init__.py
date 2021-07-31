@@ -1,1 +1,2 @@
+from .height_based_monocular_pose_globaliser import HeightBasedMonocularPoseGlobaliser
 from .monocular_pose_globaliser import MonocularPoseGlobaliser

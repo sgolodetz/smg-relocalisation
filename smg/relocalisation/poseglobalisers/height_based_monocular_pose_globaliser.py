@@ -8,17 +8,18 @@ class HeightBasedMonocularPoseGlobaliser:
 
     def __init__(self, *, debug: bool = False):
         self.__debug: bool = debug
-        self.__height_movement: float = 0.0
+        self.__height_movement_sum: float = 0.0
         self.__last_height: Optional[float] = None
         self.__last_tracker_pos: Optional[np.ndarray] = None
         self.__reference_height: Optional[float] = None
         self.__scale: float = 1.0
         self.__tracker_i_t_r: Optional[np.ndarray] = None
-        self.__tracker_movement: float = 0.0
+        self.__tracker_movement_sum: float = 0.0
 
     # PUBLIC METHODS
 
-    def apply(self, tracker_i_t_c: np.ndarray, height: float, *, suppress_scaling: bool = False) -> np.ndarray:
+    def apply(self, tracker_i_t_c: np.ndarray, height: Optional[float], *,
+              suppress_scaling: bool = False) -> np.ndarray:
         # Determine the scale to use (this will be the scale we've estimated, unless we're suppressing scaling).
         scale: float = self.__scale if not suppress_scaling else 1.0
 
@@ -47,13 +48,13 @@ class HeightBasedMonocularPoseGlobaliser:
         return tracker_w_t_c
 
     def reset(self) -> None:
-        self.__height_movement = 0.0
+        self.__height_movement_sum = 0.0
         self.__last_height = None
         self.__last_tracker_pos = None
         self.__reference_height = None
         self.__scale = 1.0
         self.__tracker_i_t_r = None
-        self.__tracker_movement = 0.0
+        self.__tracker_movement_sum = 0.0
 
     def train(self, tracker_i_t_c: np.ndarray, height: float) -> None:
         tracker_pos: np.ndarray = tracker_i_t_c[0:3, 3]
@@ -62,12 +63,15 @@ class HeightBasedMonocularPoseGlobaliser:
             self.__reference_height = height
             self.__tracker_i_t_r = tracker_i_t_c.copy()
         else:
-            self.__height_movement += abs(height - self.__last_height)
-            self.__tracker_movement += np.linalg.norm(tracker_pos - self.__last_tracker_pos)
-            self.__scale = self.__height_movement / self.__tracker_movement
-
-            if self.__debug:
-                print(f"Current Scale Estimate: {self.__scale}")
+            height_movement: float = abs(height - self.__last_height)
+            tracker_movement: float = np.linalg.norm(tracker_pos - self.__last_tracker_pos)
+            self.__height_movement_sum += height_movement
+            self.__tracker_movement_sum += tracker_movement
+            if self.__tracker_movement_sum > 0.1:
+                self.__scale = self.__height_movement_sum / self.__tracker_movement_sum
+                if self.__debug:
+                    print(height_movement, tracker_movement, self.__height_movement_sum, self.__tracker_movement_sum)
+                    print(f"Current Scale Estimate: {self.__scale}")
 
         self.__last_height = height
         self.__last_tracker_pos = tracker_pos

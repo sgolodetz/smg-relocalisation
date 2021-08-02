@@ -62,16 +62,22 @@ class HeightBasedMonocularPoseGlobaliser:
         if self.__last_height is None:
             self.__reference_height = height
             self.__tracker_i_t_r = tracker_i_t_c.copy()
+            self.__last_height = height
+            self.__last_tracker_pos = tracker_pos
         else:
             height_movement: float = abs(height - self.__last_height)
             tracker_movement: float = np.linalg.norm(tracker_pos - self.__last_tracker_pos)
-            self.__height_movement_sum += height_movement
-            self.__tracker_movement_sum += tracker_movement
-            if self.__tracker_movement_sum > 0.1:
-                self.__scale = self.__height_movement_sum / self.__tracker_movement_sum
-                if self.__debug:
-                    print(height_movement, tracker_movement, self.__height_movement_sum, self.__tracker_movement_sum)
-                    print(f"Current Scale Estimate: {self.__scale}")
+            if height_movement >= 0.02:
+                self.__height_movement_sum += height_movement
+                self.__tracker_movement_sum += tracker_movement
 
-        self.__last_height = height
-        self.__last_tracker_pos = tracker_pos
+                if self.__tracker_movement_sum > 0.1:
+                    self.__scale = self.__height_movement_sum / self.__tracker_movement_sum
+                    if self.__debug:
+                        print(
+                            height_movement, tracker_movement, self.__height_movement_sum, self.__tracker_movement_sum,
+                            self.__scale
+                        )
+
+                self.__last_height = height
+                self.__last_tracker_pos = tracker_pos

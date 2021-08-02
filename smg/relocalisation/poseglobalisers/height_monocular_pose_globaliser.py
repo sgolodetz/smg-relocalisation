@@ -3,7 +3,7 @@ import numpy as np
 from typing import Optional
 
 
-class HeightBasedMonocularPoseGlobaliser:
+class HeightMonocularPoseGlobaliser:
     # CONSTRUCTOR
 
     def __init__(self, *, debug: bool = False):

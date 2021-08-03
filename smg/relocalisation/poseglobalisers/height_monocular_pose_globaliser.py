@@ -98,9 +98,8 @@ class HeightMonocularPoseGlobaliser:
                 self.__height_movement_sum += height_movement
                 self.__tracker_movement_sum += tracker_movement
 
-                # As long as we've moved at least a bit (note that 0.1 is a non-metric measurement, so shouldn't be
-                # interpreted to mean 10cm):
-                if self.__tracker_movement_sum > 0.1:
+                # As long as we've moved:
+                if self.__tracker_movement_sum > 0.0:
                     # Estimate the scale.
                     self.__scale = self.__height_movement_sum / self.__tracker_movement_sum
 

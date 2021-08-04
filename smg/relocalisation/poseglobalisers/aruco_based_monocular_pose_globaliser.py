@@ -5,7 +5,10 @@ from typing import Optional
 
 
 class ArUcoBasedMonocularPoseGlobaliser:
-    """Used to correct the scale of monocular poses and transform them into a global coordinate system."""
+    """
+    Used to correct the scale of monocular poses and transform them into a global coordinate system by comparing
+    the tracked camera poses with those obtained by relocalising the camera against an ArUco marker.
+    """
 
     # ENUMERATIONS
 
@@ -20,7 +23,7 @@ class ArUcoBasedMonocularPoseGlobaliser:
 
     def __init__(self, *, debug: bool = False):
         """
-        Construct a monocular pose globaliser.
+        Construct an ArUco-based monocular pose globaliser.
 
         :param debug:   Whether or not to output debug messages.
         """

@@ -4,7 +4,7 @@ import vg
 from typing import Optional
 
 
-class ArUcoMonocularPoseGlobaliser:
+class ArUcoBasedMonocularPoseGlobaliser:
     """Used to correct the scale of monocular poses and transform them into a global coordinate system."""
 
     # ENUMERATIONS
@@ -29,7 +29,7 @@ class ArUcoMonocularPoseGlobaliser:
         self.__scale: float = 1.0
         self.__scale_count: int = 0
         self.__scale_sum: float = 0.0
-        self.__state: ArUcoMonocularPoseGlobaliser.EState = ArUcoMonocularPoseGlobaliser.UNTRAINED
+        self.__state: ArUcoBasedMonocularPoseGlobaliser.EState = ArUcoBasedMonocularPoseGlobaliser.UNTRAINED
         self.__up: Optional[np.ndarray] = None
 
         # A metric transformation from reference space to world space, as estimated by the relocaliser.
@@ -101,8 +101,8 @@ class ArUcoMonocularPoseGlobaliser:
         """
         Finish training the globaliser.
         """
-        if self.__state == ArUcoMonocularPoseGlobaliser.TRAINING:
-            self.__state = ArUcoMonocularPoseGlobaliser.ACTIVE
+        if self.__state == ArUcoBasedMonocularPoseGlobaliser.TRAINING:
+            self.__state = ArUcoBasedMonocularPoseGlobaliser.ACTIVE
         else:
             raise RuntimeError("Cannot finish training a pose globaliser before starting to do so")
 
@@ -161,7 +161,7 @@ class ArUcoMonocularPoseGlobaliser:
         self.__up = None
 
         # Set the globaliser's state.
-        self.__state = ArUcoMonocularPoseGlobaliser.TRAINING
+        self.__state = ArUcoBasedMonocularPoseGlobaliser.TRAINING
 
     def train(self, tracker_i_t_c: np.ndarray, relocaliser_w_t_c: np.ndarray, *, min_dist: float = 0.1) -> None:
         """

@@ -8,7 +8,7 @@ from smg.rigging.cameras import SimpleCamera
 from smg.rigging.helpers import CameraPoseConverter
 
 
-class HeightMonocularPoseGlobaliser:
+class HeightBasedMonocularPoseGlobaliser:
     """
     Used to correct the scale of monocular poses by using the known (e.g. sensed) metric height of the camera.
 

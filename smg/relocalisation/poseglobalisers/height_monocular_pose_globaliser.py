@@ -1,7 +1,11 @@
 import numpy as np
 import vg
 
+from scipy.spatial.transform import Rotation
 from typing import Optional
+
+from smg.rigging.cameras import SimpleCamera
+from smg.rigging.helpers import CameraPoseConverter
 
 
 class HeightMonocularPoseGlobaliser:
@@ -136,18 +140,17 @@ class HeightMonocularPoseGlobaliser:
 
     def __update_w_t_i(self) -> None:
         """Update the metric transformation from initial camera space to world space."""
-        # Make a metric transformation from reference space to world space.
-        metric_w_t_r: np.ndarray = np.eye(4)
-        angle: float = vg.angle(self.__up, np.array([0, -1, 0]), units="rad")
-        cos_angle, sin_angle = np.cos(angle), np.sin(angle)
-        metric_w_t_r[1, 1] = metric_w_t_r[2, 2] = cos_angle
-        metric_w_t_r[1, 2] = sin_angle
-        metric_w_t_r[2, 1] = -sin_angle
-        metric_w_t_r[1, 3] = -self.__reference_height
-
         # Make a metric transformation from reference space to initial camera space.
         metric_i_t_r: np.ndarray = self.__tracker_i_t_r.copy()
         metric_i_t_r[0:3, 3] *= self.__scale
+
+        # Make a metric transformation from reference space to world space.
+        metric_w_t_r: np.ndarray = np.eye(4)
+        angle: float = vg.angle(self.__up, np.array([0, -1, 0]), units="rad")
+        reference_cam: SimpleCamera = CameraPoseConverter.pose_to_camera(metric_i_t_r)
+        r: Rotation = Rotation.from_rotvec(reference_cam.u() * angle)
+        metric_w_t_r[0:3, 0:3] = r.as_matrix()
+        metric_w_t_r[1, 3] = -self.__reference_height
 
         # Update the metric transformation from initial camera space to world space.
         # wTi = wTr . (iTr)^-1

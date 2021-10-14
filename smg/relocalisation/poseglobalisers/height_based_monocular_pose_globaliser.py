@@ -1,8 +1,9 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import vg
 
 from scipy.spatial.transform import Rotation
-from typing import Optional
+from typing import List, Optional
 
 from smg.rigging.cameras import SimpleCamera
 from smg.rigging.helpers import CameraPoseConverter
@@ -38,6 +39,15 @@ class HeightBasedMonocularPoseGlobaliser:
         self.__up_count: int = 0
         self.__up_sum: np.ndarray = np.zeros(3)
 
+        self.__ax: Optional[np.ndarray] = None
+        self.__debug_height_movements: List[float] = []
+        self.__debug_heights: List[float] = []
+        self.__debug_tracker_movements: List[float] = []
+        self.__debug_scales: List[float] = []
+
+        if debug:
+            _, self.__ax = plt.subplots(4, 1)
+
     # PUBLIC METHODS
 
     def apply(self, tracker_i_t_c: np.ndarray) -> np.ndarray:
@@ -63,6 +73,11 @@ class HeightBasedMonocularPoseGlobaliser:
         # Make and return a metric transformation from current camera space to world space.
         # wTc = wTi . iTc
         return self.__metric_w_t_i @ metric_i_t_c
+
+    # noinspection PyMethodMayBeStatic
+    def finish_training(self) -> None:
+        """Inform the globaliser that the training process has finished."""
+        plt.close("all")
 
     def train(self, tracker_i_t_c: np.ndarray, height: float) -> None:
         """
@@ -131,6 +146,22 @@ class HeightBasedMonocularPoseGlobaliser:
                             self.__height_movement_sum, self.__tracker_movement_sum,
                             self.__scale, self.__up
                         )
+
+                        self.__debug_height_movements.append(height_movement)
+                        self.__debug_heights.append(height)
+                        self.__debug_tracker_movements.append(tracker_movement)
+                        self.__debug_scales.append(self.__scale)
+
+                        for i in range(4):
+                            self.__ax[i].clear()
+
+                        self.__ax[0].plot(range(len(self.__debug_scales)), self.__debug_scales)
+                        self.__ax[1].plot(range(len(self.__debug_heights)), self.__debug_heights)
+                        self.__ax[2].plot(range(len(self.__debug_height_movements)), self.__debug_height_movements)
+                        self.__ax[3].plot(range(len(self.__debug_tracker_movements)), self.__debug_tracker_movements)
+
+                        plt.draw()
+                        plt.waitforbuttonpress(0.001)
 
                 # Update the height and tracker position of the most recent sample.
                 self.__last_height = height

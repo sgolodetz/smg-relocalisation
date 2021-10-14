@@ -40,13 +40,15 @@ class HeightBasedMonocularPoseGlobaliser:
         self.__up_sum: np.ndarray = np.zeros(3)
 
         self.__ax: Optional[np.ndarray] = None
+        self.__fig = None
         self.__debug_height_movements: List[float] = []
         self.__debug_heights: List[float] = []
         self.__debug_tracker_movements: List[float] = []
         self.__debug_scales: List[float] = []
 
         if debug:
-            _, self.__ax = plt.subplots(4, 1)
+            self.__fig, self.__ax = plt.subplots(4, 1)
+            print(type(self.__fig))
 
     # PUBLIC METHODS
 
@@ -77,7 +79,9 @@ class HeightBasedMonocularPoseGlobaliser:
     # noinspection PyMethodMayBeStatic
     def finish_training(self) -> None:
         """Inform the globaliser that the training process has finished."""
-        plt.close("all")
+        if self.__debug:
+            self.__fig.savefig("D:/cyberphysicalsystems/droneflightsequences/output-scaleestimation/scale.png")
+            plt.close("all")
 
     def train(self, tracker_i_t_c: np.ndarray, height: float) -> None:
         """

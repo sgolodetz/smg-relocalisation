@@ -80,7 +80,9 @@ class HeightBasedMonocularPoseGlobaliser:
     def finish_training(self) -> None:
         """Inform the globaliser that the training process has finished."""
         if self.__debug:
-            self.__fig.savefig("D:/cyberphysicalsystems/droneflightsequences/output-scaleestimation/scale.png")
+            import os
+            os.makedirs("D:/cyberphysicalsystems/droneflightsequences/output-scaletests", exist_ok=True)
+            self.__fig.savefig("D:/cyberphysicalsystems/droneflightsequences/output-scaletests/scale.png")
             plt.close("all")
 
     def train(self, tracker_i_t_c: np.ndarray, height: float) -> None:

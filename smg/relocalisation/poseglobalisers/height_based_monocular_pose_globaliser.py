@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import vg
 
+from matplotlib.figure import Figure
 from scipy.spatial.transform import Rotation
 from typing import List, Optional
 
@@ -40,15 +42,16 @@ class HeightBasedMonocularPoseGlobaliser:
         self.__up_sum: np.ndarray = np.zeros(3)
 
         self.__ax: Optional[np.ndarray] = None
-        self.__fig = None
+        self.__fig: Optional[Figure] = None
+
         self.__debug_height_movements: List[float] = []
         self.__debug_heights: List[float] = []
-        self.__debug_tracker_movements: List[float] = []
         self.__debug_scales: List[float] = []
+        self.__debug_tracker_movements: List[float] = []
 
         if debug:
             self.__fig, self.__ax = plt.subplots(4, 1)
-            print(type(self.__fig))
+            self.__fig.canvas.set_window_title("Scale Estimation")
 
     # PUBLIC METHODS
 
@@ -80,9 +83,11 @@ class HeightBasedMonocularPoseGlobaliser:
     def finish_training(self) -> None:
         """Inform the globaliser that the training process has finished."""
         if self.__debug:
-            import os
-            os.makedirs("D:/cyberphysicalsystems/droneflightsequences/output-scaletests", exist_ok=True)
-            self.__fig.savefig("D:/cyberphysicalsystems/droneflightsequences/output-scaletests/scale.png")
+            self.__draw_scale_estimation_figure(start=0, end=len(self.__debug_scales))
+            # folder: str = "D:/cyberphysicalsystems/droneflightsequences/output-scaletests"
+            folder: str = "C:/smglib"
+            os.makedirs(folder, exist_ok=True)
+            self.__fig.savefig(os.path.join(folder, "scale.png"))
             plt.close("all")
 
     def train(self, tracker_i_t_c: np.ndarray, height: float) -> None:
@@ -145,28 +150,27 @@ class HeightBasedMonocularPoseGlobaliser:
                     # Update the metric transformation from initial camera space to world space.
                     self.__update_w_t_i()
 
-                    # If we're debugging, print out some relevant values.
+                    # If we're debugging:
                     if self.__debug:
+                        # Print out some relevant values.
                         print(
                             height_movement, tracker_movement, tracker_offset,
                             self.__height_movement_sum, self.__tracker_movement_sum,
                             self.__scale, self.__up
                         )
 
+                        # Visualise some relevant sequences.
                         self.__debug_height_movements.append(height_movement)
                         self.__debug_heights.append(height)
                         self.__debug_tracker_movements.append(tracker_movement)
                         self.__debug_scales.append(self.__scale)
 
-                        for i in range(4):
-                            self.__ax[i].clear()
-
-                        self.__ax[0].plot(range(len(self.__debug_scales)), self.__debug_scales)
-                        self.__ax[1].plot(range(len(self.__debug_heights)), self.__debug_heights)
-                        self.__ax[2].plot(range(len(self.__debug_height_movements)), self.__debug_height_movements)
-                        self.__ax[3].plot(range(len(self.__debug_tracker_movements)), self.__debug_tracker_movements)
-
-                        plt.draw()
+                        tick_step: int = 10
+                        start: int = max(len(self.__debug_scales) - 4 * tick_step - 1, 0)
+                        end: int = len(self.__debug_scales)
+                        self.__draw_scale_estimation_figure(
+                            start=start, end=end, xticks=np.arange(start, end, tick_step)
+                        )
                         plt.waitforbuttonpress(0.001)
 
                 # Update the height and tracker position of the most recent sample.
@@ -174,6 +178,37 @@ class HeightBasedMonocularPoseGlobaliser:
                 self.__last_tracker_pos = tracker_pos
 
     # PRIVATE METHODS
+
+    def __draw_scale_estimation_figure(self, *, start: int, end: int, xticks: Optional[List[int]] = None) -> None:
+        """
+        TODO
+
+        :param start:   TODO
+        :param end:     TODO
+        :param xticks:  TODO
+        """
+        for i in range(4):
+            self.__ax[i].clear()
+            if xticks is not None:
+                self.__ax[i].xaxis.set_ticks(xticks)
+
+        plt.xlabel("Iteration")
+        xs: List[int] = np.arange(start, end)
+        self.__ax[0].set_ylabel("Scale")
+        self.__ax[0].plot(xs, self.__debug_scales[start:end])
+        self.__ax[1].set_ylabel("Height")
+        self.__ax[1].plot(xs, self.__debug_heights[start:end])
+        self.__ax[2].set_ylabel("Height\nMovement")
+        self.__ax[2].plot(xs, self.__debug_height_movements[start:end])
+        self.__ax[3].set_ylabel("Tracker\nMovement")
+        self.__ax[3].plot(xs, self.__debug_tracker_movements[start:end])
+
+        plt.subplots_adjust(
+            wspace=1.5,
+            hspace=1.5
+        )
+
+        plt.draw()
 
     def __update_w_t_i(self) -> None:
         """Update the metric transformation from initial camera space to world space."""

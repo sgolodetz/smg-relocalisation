@@ -169,7 +169,7 @@ class HeightBasedMonocularPoseGlobaliser:
                             self.__scale, self.__up
                         )
 
-                        # Visualise some relevant sequences.
+                        # Visualise some relevant time sequences.
                         self.__debug_height_movements.append(height_movement)
                         self.__debug_heights.append(height)
                         self.__debug_tracker_movements.append(tracker_movement)
@@ -189,19 +189,26 @@ class HeightBasedMonocularPoseGlobaliser:
 
     # PRIVATE METHODS
 
-    def __draw_scale_estimation_figure(self, *, start: int, end: int, xticks: Optional[List[int]] = None) -> None:
+    def __draw_scale_estimation_figure(self, *, start: int, end: int, xticks: Optional[np.ndarray] = None) -> None:
         """
-        TODO
+        Draw the scale estimation figure.
 
-        :param start:   TODO
-        :param end:     TODO
-        :param xticks:  TODO
+        .. note::
+            This consists of a number of sub-figures for different time sequences (scale estimates, drone heights,
+            height movements and tracker movements). To avoid slow-down over time, sub-sequences can be plotted
+            instead of the full sequences: these can be specified using a [start:end] slice.
+
+        :param start:   The start of the slice to plot.
+        :param end:     The end of the slice to plot.
+        :param xticks:  The positions of the ticks to place on the x axes of the different sub-figures.
         """
+        # Clear the different sub-figures and (re-)specify the ticks on their x axes.
         for i in range(4):
             self.__ax[i].clear()
             if xticks is not None:
                 self.__ax[i].xaxis.set_ticks(xticks)
 
+        # Specify what to plot in each sub-figure.
         plt.xlabel("Iteration")
         xs: List[int] = np.arange(start, end)
         self.__ax[0].set_ylabel("Scale")
@@ -213,11 +220,13 @@ class HeightBasedMonocularPoseGlobaliser:
         self.__ax[3].set_ylabel("Tracker\nMovement")
         self.__ax[3].plot(xs, self.__debug_tracker_movements[start:end])
 
+        # Adjust the spacing between the sub-figures to prevent overlaps.
         plt.subplots_adjust(
             wspace=1.5,
             hspace=1.5
         )
 
+        # Draw the figure.
         plt.draw()
 
     def __update_w_t_i(self) -> None:

@@ -22,18 +22,22 @@ class HeightBasedMonocularPoseGlobaliser:
 
     # CONSTRUCTOR
 
-    def __init__(self, *, debug: bool = False):
+    def __init__(self, *, debug: bool = False, output_dir: Optional[str] = None, save_scale: bool = False):
         """
         Construct a height-based monocular pose globaliser.
 
-        :param debug:   Whether or not to output debug messages.
+        :param debug:       Whether to enable debugging.
+        :param output_dir:  An optional directory into which to save output files.
+        :param save_scale:  Whether to save the scale estimation figure (if available, with debugging enabled).
         """
         self.__debug: bool = debug
         self.__height_movement_sum: float = 0.0
         self.__last_height: Optional[float] = None
         self.__last_tracker_pos: Optional[np.ndarray] = None
         self.__metric_w_t_i: Optional[np.ndarray] = None
+        self.__output_dir: Optional[str] = output_dir
         self.__reference_height: Optional[float] = None
+        self.__save_scale: bool = save_scale
         self.__scale: float = 1.0
         self.__tracker_i_t_r: Optional[np.ndarray] = None
         self.__tracker_movement_sum: float = 0.0
@@ -82,12 +86,18 @@ class HeightBasedMonocularPoseGlobaliser:
     # noinspection PyMethodMayBeStatic
     def finish_training(self) -> None:
         """Inform the globaliser that the training process has finished."""
+        # If debugging is enabled:
         if self.__debug:
-            self.__draw_scale_estimation_figure(start=0, end=len(self.__debug_scales))
-            # folder: str = "D:/cyberphysicalsystems/droneflightsequences/output-scaletests"
-            folder: str = "C:/smglib"
-            os.makedirs(folder, exist_ok=True)
-            self.__fig.savefig(os.path.join(folder, "scale.png"))
+            # If an output directory was specified and we're saving the scale estimation figure:
+            if self.__output_dir is not None and self.__save_scale:
+                # Redraw the figure to cover all iterations.
+                self.__draw_scale_estimation_figure(start=0, end=len(self.__debug_scales))
+
+                # Save it to disk.
+                os.makedirs(self.__output_dir, exist_ok=True)
+                self.__fig.savefig(os.path.join(self.__output_dir, "scale.png"))
+
+            # Close all pyplot windows now that training has finished.
             plt.close("all")
 
     def train(self, tracker_i_t_c: np.ndarray, height: float) -> None:

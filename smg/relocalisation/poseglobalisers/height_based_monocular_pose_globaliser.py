@@ -1,8 +1,11 @@
+import matplotlib.pyplot as plt
 import numpy as np
+import os
 import vg
 
+from matplotlib.figure import Figure
 from scipy.spatial.transform import Rotation
-from typing import Optional
+from typing import List, Optional
 
 from smg.rigging.cameras import SimpleCamera
 from smg.rigging.helpers import CameraPoseConverter
@@ -19,24 +22,40 @@ class HeightBasedMonocularPoseGlobaliser:
 
     # CONSTRUCTOR
 
-    def __init__(self, *, debug: bool = False):
+    def __init__(self, *, debug: bool = False, output_dir: Optional[str] = None, save_scale: bool = False):
         """
         Construct a height-based monocular pose globaliser.
 
-        :param debug:   Whether or not to output debug messages.
+        :param debug:       Whether to enable debugging.
+        :param output_dir:  An optional directory into which to save output files.
+        :param save_scale:  Whether to save the scale estimation figure (if available, with debugging enabled).
         """
         self.__debug: bool = debug
         self.__height_movement_sum: float = 0.0
         self.__last_height: Optional[float] = None
         self.__last_tracker_pos: Optional[np.ndarray] = None
         self.__metric_w_t_i: Optional[np.ndarray] = None
+        self.__output_dir: Optional[str] = output_dir
         self.__reference_height: Optional[float] = None
+        self.__save_scale: bool = save_scale
         self.__scale: float = 1.0
         self.__tracker_i_t_r: Optional[np.ndarray] = None
         self.__tracker_movement_sum: float = 0.0
         self.__up: Optional[np.ndarray] = None
         self.__up_count: int = 0
         self.__up_sum: np.ndarray = np.zeros(3)
+
+        self.__ax: Optional[np.ndarray] = None
+        self.__fig: Optional[Figure] = None
+
+        self.__debug_height_movements: List[float] = []
+        self.__debug_heights: List[float] = []
+        self.__debug_scales: List[float] = []
+        self.__debug_tracker_movements: List[float] = []
+
+        if debug:
+            self.__fig, self.__ax = plt.subplots(4, 1)
+            self.__fig.canvas.set_window_title("Scale Estimation")
 
     # PUBLIC METHODS
 
@@ -63,6 +82,23 @@ class HeightBasedMonocularPoseGlobaliser:
         # Make and return a metric transformation from current camera space to world space.
         # wTc = wTi . iTc
         return self.__metric_w_t_i @ metric_i_t_c
+
+    # noinspection PyMethodMayBeStatic
+    def finish_training(self) -> None:
+        """Inform the globaliser that the training process has finished."""
+        # If debugging is enabled:
+        if self.__debug:
+            # If an output directory was specified and we're saving the scale estimation figure:
+            if self.__output_dir is not None and self.__save_scale:
+                # Redraw the figure to cover all iterations.
+                self.__draw_scale_estimation_figure(start=0, end=len(self.__debug_scales))
+
+                # Save it to disk.
+                os.makedirs(self.__output_dir, exist_ok=True)
+                self.__fig.savefig(os.path.join(self.__output_dir, "scale.png"))
+
+            # Close all pyplot windows now that training has finished.
+            plt.close("all")
 
     def train(self, tracker_i_t_c: np.ndarray, height: float) -> None:
         """
@@ -124,19 +160,74 @@ class HeightBasedMonocularPoseGlobaliser:
                     # Update the metric transformation from initial camera space to world space.
                     self.__update_w_t_i()
 
-                    # If we're debugging, print out some relevant values.
+                    # If we're debugging:
                     if self.__debug:
+                        # Print out some relevant values.
                         print(
                             height_movement, tracker_movement, tracker_offset,
                             self.__height_movement_sum, self.__tracker_movement_sum,
                             self.__scale, self.__up
                         )
 
+                        # Visualise some relevant time sequences.
+                        self.__debug_height_movements.append(height_movement)
+                        self.__debug_heights.append(height)
+                        self.__debug_tracker_movements.append(tracker_movement)
+                        self.__debug_scales.append(self.__scale)
+
+                        tick_step: int = 10
+                        start: int = max(len(self.__debug_scales) - 4 * tick_step - 1, 0)
+                        end: int = len(self.__debug_scales)
+                        self.__draw_scale_estimation_figure(
+                            start=start, end=end, xticks=np.arange(start, end, tick_step)
+                        )
+                        plt.waitforbuttonpress(0.001)
+
                 # Update the height and tracker position of the most recent sample.
                 self.__last_height = height
                 self.__last_tracker_pos = tracker_pos
 
     # PRIVATE METHODS
+
+    def __draw_scale_estimation_figure(self, *, start: int, end: int, xticks: Optional[np.ndarray] = None) -> None:
+        """
+        Draw the scale estimation figure.
+
+        .. note::
+            This consists of a number of sub-figures for different time sequences (scale estimates, drone heights,
+            height movements and tracker movements). To avoid slow-down over time, sub-sequences can be plotted
+            instead of the full sequences: these can be specified using a [start:end] slice.
+
+        :param start:   The start of the slice to plot.
+        :param end:     The end of the slice to plot.
+        :param xticks:  The positions of the ticks to place on the x axes of the different sub-figures.
+        """
+        # Clear the different sub-figures and (re-)specify the ticks on their x axes.
+        for i in range(4):
+            self.__ax[i].clear()
+            if xticks is not None:
+                self.__ax[i].xaxis.set_ticks(xticks)
+
+        # Specify what to plot in each sub-figure.
+        plt.xlabel("Iteration")
+        xs: List[int] = np.arange(start, end)
+        self.__ax[0].set_ylabel("Scale")
+        self.__ax[0].plot(xs, self.__debug_scales[start:end])
+        self.__ax[1].set_ylabel("Height")
+        self.__ax[1].plot(xs, self.__debug_heights[start:end])
+        self.__ax[2].set_ylabel("Height\nMovement")
+        self.__ax[2].plot(xs, self.__debug_height_movements[start:end])
+        self.__ax[3].set_ylabel("Tracker\nMovement")
+        self.__ax[3].plot(xs, self.__debug_tracker_movements[start:end])
+
+        # Adjust the spacing between the sub-figures to prevent overlaps.
+        plt.subplots_adjust(
+            wspace=1.5,
+            hspace=1.5
+        )
+
+        # Draw the figure.
+        plt.draw()
 
     def __update_w_t_i(self) -> None:
         """Update the metric transformation from initial camera space to world space."""

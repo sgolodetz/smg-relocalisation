@@ -49,6 +49,10 @@ class DSACStarRelocaliser:
             transforms.Normalize(mean=[0.4], std=[0.25])  # as per Eric's code
         ])
 
+        # Prime the network to avoid it running slowly the first time it's called.
+        # Note: The actual parameters passed in here aren't important.
+        self.estimate_pose(np.zeros((480, 640, 3), dtype=np.uint8), 1.0)
+
     # PUBLIC METHODS
 
     def estimate_pose(self, image: np.ndarray, focal_length: float) -> \

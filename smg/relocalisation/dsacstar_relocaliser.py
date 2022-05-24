@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import dsacstar  # must be imported after torch
 
-from typing import Optional
+from typing import Optional, Tuple
 
 from torchvision import transforms
 
@@ -51,7 +51,8 @@ class DSACStarRelocaliser:
 
     # PUBLIC METHODS
 
-    def estimate_pose(self, image: np.ndarray, focal_length: float) -> Optional[np.ndarray]:
+    def estimate_pose(self, image: np.ndarray, focal_length: float) -> \
+            Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Estimate the 6D pose of the specified image.
 
@@ -60,7 +61,8 @@ class DSACStarRelocaliser:
 
         :param image:           The image whose pose is to be estimated.
         :param focal_length:    The focal length of the camera (in pixels).
-        :return:                The estimated 6D pose, as a 4x4 matrix.
+        :return:                A pair, the first component of which is the estimated 6D pose, as a 4x4 matrix,
+                                and the second component of which is the scene coordinate image.
         """
         # Transform the image from BGR to RGB.
         # noinspection PyUnresolvedReferences
@@ -91,5 +93,5 @@ class DSACStarRelocaliser:
                 self.__network.OUTPUT_SUBSAMPLE
             )
 
-            # Copy the estimated camera pose back across to a NumPy array on the CPU, and return it.
-            return out_pose.cpu().numpy()
+            # Return the estimated camera pose and scene coordinates image as NumPy arrays.
+            return out_pose.numpy(), np.transpose(scene_coordinates.squeeze().numpy(), (1, 2, 0))

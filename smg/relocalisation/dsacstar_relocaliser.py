@@ -7,7 +7,7 @@ from typing import Optional
 
 from torchvision import transforms
 
-from network import Network
+from smg.external.dsacstar.network import Network
 
 
 class DSACStarRelocaliser:
@@ -15,21 +15,32 @@ class DSACStarRelocaliser:
 
     # CONSTRUCTOR
 
-    def __init__(self, *, hypothesis_count: int = 64, image_height: int = 480, inlier_alpha: float = 100.0,
-                 inlier_threshold: float = 10.0, max_pixel_error: float = 100.0, network_filename: str,
+    def __init__(self, network_filename: str, *, hypothesis_count: int = 64, image_height: int = 480,
+                 inlier_alpha: float = 100.0, inlier_threshold: float = 10.0, max_pixel_error: float = 100.0,
                  tiny: bool = False):
+        """
+        Construct a wrapper around Eric Brachmann's DSAC* relocaliser.
+
+        :param network_filename:    The name of the file containing the DSAC* network.
+        :param hypothesis_count:    The number of RANSAC hypotheses to consider.
+        :param image_height:        The height to which the colour images will be rescaled.
+        :param inlier_alpha:        The alpha parameter to use for soft inlier counting.
+        :param inlier_threshold:    The inlier threshold to use when sampling RANSAC hypotheses (in pixels).
+        :param max_pixel_error:     The maximum reprojection error to use when checking pose consistency (in pixels).
+        :param tiny:                Whether to load a tiny network to massively reduce the memory footprint.
+        """
         self.__hypothesis_count: int = hypothesis_count
         self.__inlier_alpha: float = inlier_alpha
         self.__inlier_threshold: float = inlier_threshold
         self.__max_pixel_error: float = max_pixel_error
 
-        # TODO: Comment here.
+        # Load in the DSAC* network, copy it across to the GPU, and put it into evaluation mode.
         self.__network: Network = Network(torch.zeros(3), tiny)
         self.__network.load_state_dict(torch.load(network_filename))
         self.__network = self.__network.cuda()
         self.__network.eval()
 
-        # TODO: Comment here.
+        # Set up the sequence of transformations that will be applied to each image before passing it to the network.
         self.__image_transform = transforms.Compose([
             transforms.ToPILImage(),
             transforms.Resize(image_height),
@@ -41,7 +52,15 @@ class DSACStarRelocaliser:
     # PUBLIC METHODS
 
     def estimate_pose(self, image: np.ndarray, focal_length: float) -> Optional[np.ndarray]:
+        """
+        TODO
+
+        :param image:           TODO
+        :param focal_length:    TODO
+        :return:                TODO
+        """
         # Transform the image from BGR to RGB.
+        # noinspection PyUnresolvedReferences
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         with torch.no_grad():
@@ -53,6 +72,9 @@ class DSACStarRelocaliser:
 
             # TODO: Comment here.
             out_pose: torch.Tensor = torch.zeros((4, 4))
+
+            # TODO: Comment here.
+            # noinspection PyUnresolvedReferences
             dsacstar.forward_rgb(
                 scene_coordinates,
                 out_pose,
@@ -66,4 +88,4 @@ class DSACStarRelocaliser:
                 self.__network.OUTPUT_SUBSAMPLE
             )
 
-        return out_pose.cpu().numpy()
+            return out_pose.cpu().numpy()

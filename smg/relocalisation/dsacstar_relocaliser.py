@@ -53,27 +53,30 @@ class DSACStarRelocaliser:
 
     def estimate_pose(self, image: np.ndarray, focal_length: float) -> Optional[np.ndarray]:
         """
-        TODO
+        Estimate the 6D pose of the specified image.
 
-        :param image:           TODO
-        :param focal_length:    TODO
-        :return:                TODO
+        .. note::
+            The image is assumed to be in BGR format (i.e. what OpenCV uses).
+
+        :param image:           The image whose pose is to be estimated.
+        :param focal_length:    The focal length of the camera (in pixels).
+        :return:                The estimated 6D pose, as a 4x4 matrix.
         """
         # Transform the image from BGR to RGB.
         # noinspection PyUnresolvedReferences
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         with torch.no_grad():
-            # TODO: Comment here.
+            # Convert the image into an appropriately shaped PyTorch tensor on the GPU.
             tensor: torch.Tensor = self.__image_transform(image).unsqueeze(0).cuda()
 
-            # TODO: Comment here.
+            # Run the tensor through the network to get the scene coordinate image.
             scene_coordinates: torch.Tensor = self.__network(tensor).cpu()
 
-            # TODO: Comment here.
+            # Make an empty tensor in which to store the camera pose.
             out_pose: torch.Tensor = torch.zeros((4, 4))
 
-            # TODO: Comment here.
+            # Use the predicted scene coordinates to estimate the camera pose.
             # noinspection PyUnresolvedReferences
             dsacstar.forward_rgb(
                 scene_coordinates,
@@ -88,4 +91,5 @@ class DSACStarRelocaliser:
                 self.__network.OUTPUT_SUBSAMPLE
             )
 
+            # Copy the estimated camera pose back across to a NumPy array on the CPU, and return it.
             return out_pose.cpu().numpy()

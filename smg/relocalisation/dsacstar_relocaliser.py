@@ -9,8 +9,6 @@ from torchvision import transforms
 
 from network import Network
 
-from smg.utility import PoseUtil
-
 
 class DSACStarRelocaliser:
     """A wrapper around Eric Brachmann's DSAC* relocaliser."""
@@ -69,18 +67,3 @@ class DSACStarRelocaliser:
             )
 
         return out_pose.cpu().numpy()
-
-
-def main() -> None:
-    np.set_printoptions(suppress=True)
-    relocaliser: DSACStarRelocaliser = DSACStarRelocaliser(
-        network_filename="../external/dsacstar/models/rgb/7scenes_heads.net"
-    )
-
-    image: np.ndarray = cv2.imread("../external/dsacstar/datasets/7scenes_heads/test/rgb/seq-01-frame-000000.color.png")
-    print(relocaliser.estimate_pose(image, 525.0))
-    print(PoseUtil.load_pose("../external/dsacstar/datasets/7scenes_heads/test/poses/seq-01-frame-000000.pose.txt"))
-
-
-if __name__ == "__main__":
-    main()

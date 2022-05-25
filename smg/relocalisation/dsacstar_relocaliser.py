@@ -15,13 +15,14 @@ class DSACStarRelocaliser:
 
     # CONSTRUCTOR
 
-    def __init__(self, network_filename: str, *, hypothesis_count: int = 64, image_height: int = 480,
-                 inlier_alpha: float = 100.0, inlier_threshold: float = 10.0, max_pixel_error: float = 100.0,
-                 tiny: bool = False):
+    def __init__(self, network_filename: str, *, debug: bool = False, hypothesis_count: int = 64,
+                 image_height: int = 480, inlier_alpha: float = 100.0, inlier_threshold: float = 10.0,
+                 max_pixel_error: float = 100.0, tiny: bool = False):
         """
         Construct a wrapper around Eric Brachmann's DSAC* relocaliser.
 
         :param network_filename:    The name of the file containing the DSAC* network.
+        :param debug:               Whether to print out debug messages.
         :param hypothesis_count:    The number of RANSAC hypotheses to consider.
         :param image_height:        The height to which the colour images will be rescaled.
         :param inlier_alpha:        The alpha parameter to use for soft inlier counting.
@@ -29,6 +30,7 @@ class DSACStarRelocaliser:
         :param max_pixel_error:     The maximum reprojection error to use when checking pose consistency (in pixels).
         :param tiny:                Whether to load a tiny network to massively reduce the memory footprint.
         """
+        self.__debug: bool = debug
         self.__hypothesis_count: int = hypothesis_count
         self.__inlier_alpha: float = inlier_alpha
         self.__inlier_threshold: float = inlier_threshold
@@ -94,7 +96,8 @@ class DSACStarRelocaliser:
                 float(tensor.size(2) / 2),
                 self.__inlier_alpha,
                 self.__max_pixel_error,
-                self.__network.OUTPUT_SUBSAMPLE
+                self.__network.OUTPUT_SUBSAMPLE,
+                self.__debug
             )
 
             # Return the estimated camera pose and scene coordinates image as NumPy arrays.

@@ -1,7 +1,7 @@
 from setuptools import find_packages, setup
 
-# with open("README.md", "r") as fh:
-#     long_description = fh.read()
+with open("README.md", "r") as fh:
+    long_description = fh.read()
 
 setup(
     name="smg-relocalisation",
@@ -9,7 +9,7 @@ setup(
     author="Stuart Golodetz",
     author_email="stuart.golodetz@cs.ox.ac.uk",
     description="Various approaches to camera relocalisation",
-    long_description="",  #long_description,
+    long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/sgolodetz/smg-relocalisation",
     packages=find_packages(include=["smg.relocalisation", "smg.relocalisation.*"]),
@@ -18,6 +18,7 @@ setup(
         "numpy",
         "opencv-contrib-python==3.4.2.16",
         "PyOpenGL",
+        "smg-rigging",
         "vg"
     ],
     classifiers=[
